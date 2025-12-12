@@ -1,0 +1,5 @@
+-- AlterTable
+ALTER TABLE "Children" ADD COLUMN IF NOT EXISTS "isActive" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "Children" ADD COLUMN IF NOT EXISTS "photosRequested" BOOLEAN NOT NULL DEFAULT false;
+
+

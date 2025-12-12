@@ -1,0 +1,542 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id                      String        @id @default(uuid())
+  firstName               String
+  lastName                String
+  email                   String        @unique
+  emailVerified           Boolean       @default(false)
+  pendingEmail            String?
+  emailVerificationCode   String?
+  emailVerificationExpiry DateTime?
+  password                String
+  code                    String?        
+  phone                   String
+  role                    Role
+  regionId                String?
+  region                  Region? @relation(fields: [regionId], references: [id])
+  agentLevel              AgentLevel?
+  districtId              String?
+  district                District? @relation(fields: [districtId], references: [id])
+  healthCenterId          String?
+  healthCenter            HealthCenter? @relation(fields: [healthCenterId], references: [id])
+  isActive                Boolean       @default(false)
+
+  createdAt               DateTime      @default(now())
+  updatedAt               DateTime      @updatedAt
+
+  activationToken         String?
+  activationExpires       DateTime?
+
+  childrens               Children[]
+  records                 Record[]
+  vaccinesCompleted      ChildVaccineCompleted[] @relation("UserAsAdministered")
+  vaccinesScheduled      ChildVaccineScheduled[] @relation("UserAsScheduler")
+  vaccinesEscalated      ChildVaccineOverdue[]   @relation("UserAsEscalated")
+  confirmedTransfers     PendingStockTransfer[]
+  scheduledVaccineRequests VaccineRequest[] @relation("UserScheduledRequests")
+}
+
+enum Role {
+  NATIONAL
+  REGIONAL
+  DISTRICT
+  AGENT
+}
+
+enum AgentLevel {
+  ADMIN
+  STAFF
+}
+
+model HealthCenter {
+  id                      String          @id @default(uuid())
+  name                    String
+  address                 String
+  districtId              String
+  district                District        @relation(fields: [districtId], references: [id])
+
+  users                   User[]
+  stockHEALTHCENTER       StockHEALTHCENTER[]  
+  childrens               Children[]
+  records                 Record[]
+
+
+}
+
+model Region {
+  id                      String        @id @default(uuid())
+  name                    String
+
+  users         User[]
+  communes      Commune[]
+  stockREGIONAL   StockREGIONAL[]
+  campaigns     Campaign[]
+}
+
+model Campaign {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  startDate   DateTime
+  endDate     DateTime
+  regionId    String
+  region      Region   @relation(fields: [regionId], references: [id], onDelete: Cascade)
+  medias      Json     @default("[]")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model VaccineCalendar {
+  id            String  @id @default(uuid())
+  description   String
+  ageUnit       AgeUnit
+  specificAge   Int
+  minAge        Int
+  maxAge        Int
+
+  completedEntries   ChildVaccineCompleted[]
+  dueEntries         ChildVaccineDue[]
+  scheduledEntries   ChildVaccineScheduled[]
+  overdueEntries     ChildVaccineOverdue[] 
+  lateEntries        ChildVaccineLate[]
+  vaccineRequests    VaccineRequest[]
+  doseAssignments    VaccineCalendarDose[]
+}
+
+enum AgeUnit {
+  WEEKS
+  MONTHS
+  YEARS
+}
+
+model Vaccine {
+  id                String        @id @default(uuid())
+  name              String
+  description       String
+  dosesRequired     String
+  gender            Gender?       // null = pour garçons et filles, M = garçons uniquement, F = filles uniquement
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  StockNATIONAL                   StockNATIONAL?
+  StockREGIONAL                   StockREGIONAL[]
+  StockDISTRICT                   StockDISTRICT[]
+  StockHEALTHCENTER               StockHEALTHCENTER[]
+  childrens                       Children[]
+  records                         Record[]
+  completedByChildren  ChildVaccineCompleted[]
+  dueForChildren       ChildVaccineDue[]
+  scheduledForChildren ChildVaccineScheduled[]
+  overdueForChildren   ChildVaccineOverdue[]
+  lateForChildren      ChildVaccineLate[]
+  stockLots            StockLot[]
+  stockTransfers       StockTransfer[]
+  pendingStockTransfers PendingStockTransfer[]
+  vaccineRequests        VaccineRequest[]
+  calendarAssignments    VaccineCalendarDose[]
+}
+
+model VaccineCalendarDose {
+  id          String           @id @default(uuid())
+  vaccineId   String
+  calendarId  String
+  doseNumber  Int
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  vaccine     Vaccine          @relation(fields: [vaccineId], references: [id], onDelete: Cascade)
+  calendar    VaccineCalendar  @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+
+  @@unique([vaccineId, doseNumber])
+  @@index([calendarId])
+}
+
+model Commune {
+  id          String  @id @default(uuid())
+  name        String
+  regionId    String
+  region      Region @relation(fields: [regionId], references: [id])
+  district    District?
+}
+
+model District {
+  id                String          @id @default(uuid())
+  name              String
+  communeId         String          @unique
+  commune           Commune         @relation(fields: [communeId], references: [id])
+
+  healthCenters     HealthCenter[]
+  users             User[]
+  stockDISTRICT     StockDISTRICT[]
+  
+
+}
+
+model StockNATIONAL {
+  id                String          @id @default(uuid())
+  vaccineId         String          @unique
+  vaccine           Vaccine         @relation(fields: [vaccineId], references: [id])
+  quantity          Int?
+}
+
+model StockREGIONAL {
+  id                String          @id @default(uuid())
+  vaccineId         String          
+  vaccine           Vaccine         @relation(fields: [vaccineId], references: [id])
+  regionId          String          
+  region            Region          @relation(fields: [regionId], references: [id])
+  quantity          Int?            @default(0)
+
+    @@unique([vaccineId, regionId])
+}
+
+model StockDISTRICT {
+  id                String          @id @default(uuid())
+  vaccineId         String          
+  vaccine           Vaccine         @relation(fields: [vaccineId], references: [id])
+  districtId        String          
+  district          District        @relation(fields: [districtId], references: [id])
+  quantity          Int?
+
+  @@unique([vaccineId, districtId])
+
+}
+
+model StockHEALTHCENTER {
+  id                String          @id @default(uuid())
+  vaccineId         String          
+  vaccine           Vaccine         @relation(fields: [vaccineId], references: [id])
+  healthCenterId    String          
+  healthCenter      HealthCenter    @relation(fields: [healthCenterId], references: [id])
+  quantity          Int?
+
+  @@unique([vaccineId, healthCenterId])
+}
+
+model Children {
+  id                      String          @id @default(uuid())
+  firstName               String
+  lastName                String
+  birthDate               DateTime
+  birthPlace              String
+  gender                  Gender
+  address                 String
+  healthCenterId          String
+  healthCenter            HealthCenter    @relation(fields: [healthCenterId], references: [id])
+  status                  Status
+  emailParent             String
+  passwordParent          String          @default("0000")
+  code                    String?
+  phoneParent             String
+  fatherName              String
+  motherName              String
+  nextVaccineId           String?
+  vaccine                 Vaccine?         @relation(fields: [nextVaccineId], references: [id])
+  nextAgentId             String?
+  user                    User?            @relation(fields: [nextAgentId], references: [id])
+  nextAppointment         DateTime?
+  isActive                Boolean         @default(false)
+  photosRequested         Boolean         @default(false)
+
+  records                 Record[]
+  completedVaccines      ChildVaccineCompleted[]
+  dueVaccines            ChildVaccineDue[]
+  scheduledVaccines      ChildVaccineScheduled[]
+  overdueVaccines        ChildVaccineOverdue[]
+  lateVaccines           ChildVaccineLate[]
+  notifications          Notification[]
+  vaccineRequests        VaccineRequest[]
+  vaccinationProofs      ChildVaccinationProof[]
+}
+
+enum Gender {
+  M
+  F
+}
+
+enum Status {
+  A_JOUR
+  PAS_A_JOUR
+}
+
+model Record {
+  id                      String          @id @default(uuid())
+  healthCenterId          String
+  healthCenter            HealthCenter    @relation(fields: [healthCenterId], references: [id])
+  vaccineId               String
+  vaccine                 Vaccine         @relation(fields: [vaccineId], references: [id])
+  agentId                 String
+  user                    User            @relation(fields: [agentId], references: [id])
+  childrenId              String
+  children                Children        @relation(fields: [childrenId], references: [id])
+}
+
+
+model ChildVaccineCompleted {
+  id                 String           @id @default(uuid())
+  childId            String
+  child              Children         @relation(fields: [childId], references: [id])
+  vaccineCalendarId  String?
+  vaccineCalendar    VaccineCalendar?  @relation(fields: [vaccineCalendarId], references: [id])
+  vaccineId          String
+  vaccine            Vaccine          @relation(fields: [vaccineId], references: [id])
+  dose               Int              @default(1)
+  administeredAt     DateTime         @default(now())
+  administeredById   String?
+  administeredBy     User?            @relation("UserAsAdministered", fields: [administeredById], references: [id])
+  notes              String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  @@unique([childId, vaccineId, dose])
+}
+
+model ChildVaccineDue {
+  id                 String           @id @default(uuid())
+  childId            String
+  child              Children         @relation(fields: [childId], references: [id])
+  vaccineCalendarId  String
+  vaccineCalendar    VaccineCalendar  @relation(fields: [vaccineCalendarId], references: [id])
+  vaccineId          String
+  vaccine            Vaccine          @relation(fields: [vaccineId], references: [id])
+  scheduledFor       DateTime
+  dose               Int              @default(1)
+
+  @@unique([childId, vaccineCalendarId, vaccineId, dose])
+}
+
+model ChildVaccineScheduled {
+  id                 String           @id @default(uuid())
+  childId            String
+  child              Children         @relation(fields: [childId], references: [id])
+  vaccineCalendarId  String?
+  vaccineCalendar    VaccineCalendar?  @relation(fields: [vaccineCalendarId], references: [id])
+  vaccineId          String
+  vaccine            Vaccine          @relation(fields: [vaccineId], references: [id])
+  scheduledFor       DateTime
+  plannerId          String?
+  planner            User?            @relation("UserAsScheduler", fields: [plannerId], references: [id])
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  dose               Int              @default(1)
+  stockReservation   StockReservation?
+
+  @@unique([childId, vaccineCalendarId, vaccineId, dose])
+}
+
+model ChildVaccineOverdue {
+  id                 String           @id @default(uuid())
+  childId            String
+  child              Children         @relation(fields: [childId], references: [id])
+  vaccineCalendarId  String
+  vaccineCalendar    VaccineCalendar  @relation(fields: [vaccineCalendarId], references: [id])
+  vaccineId          String
+  vaccine            Vaccine          @relation(fields: [vaccineId], references: [id])
+  dueDate            DateTime       
+  escalatedToId      String?
+  escalatedTo        User?            @relation("UserAsEscalated", fields: [escalatedToId], references: [id])
+  dose               Int              @default(1)
+
+  @@unique([childId, vaccineCalendarId, vaccineId, dose])
+}
+
+model ChildVaccineLate {
+  id                 String           @id @default(uuid())
+  childId            String
+  child              Children         @relation(fields: [childId], references: [id])
+  vaccineCalendarId  String
+  vaccineCalendar    VaccineCalendar  @relation(fields: [vaccineCalendarId], references: [id])
+  vaccineId          String
+  vaccine            Vaccine          @relation(fields: [vaccineId], references: [id])
+  dueDate            DateTime         
+  detectedAt         DateTime         @default(now()) // moment où le retard est détecté
+
+  dose               Int              @default(1)
+
+  @@unique([childId, vaccineCalendarId, vaccineId, dose])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  childId   String
+  child     Children @relation(fields: [childId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  type      String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([childId])
+  @@index([isRead])
+  @@index([createdAt])
+}
+
+enum StockLotOwnerType {
+  NATIONAL
+  REGIONAL
+  DISTRICT
+  HEALTHCENTER
+}
+
+enum StockLotStatus {
+  VALID
+  EXPIRED
+}
+
+model StockLot {
+  id                String            @id @default(uuid())
+  vaccineId         String
+  vaccine           Vaccine           @relation(fields: [vaccineId], references: [id])
+  ownerType         StockLotOwnerType
+  ownerId           String?
+  quantity          Int
+  remainingQuantity Int
+  expiration        DateTime
+  status            StockLotStatus   @default(VALID)
+  sourceLotId       String?
+  sourceLot         StockLot?         @relation("LotDerivedFrom", fields: [sourceLotId], references: [id])
+  derivedLots       StockLot[]        @relation("LotDerivedFrom")
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  transferLots      StockTransferLot[]
+  pendingTransferLots PendingStockTransferLot[]
+  stockReservations StockReservation[]
+
+  @@index([ownerType, ownerId, vaccineId])
+}
+
+model StockTransfer {
+  id                String            @id @default(uuid())
+  vaccineId         String
+  vaccine           Vaccine            @relation(fields: [vaccineId], references: [id])
+  fromType          StockLotOwnerType
+  fromId            String?
+  toType            StockLotOwnerType
+  toId              String?
+  quantity          Int
+  createdAt         DateTime           @default(now())
+
+  lots              StockTransferLot[]
+}
+
+model StockTransferLot {
+  id                String            @id @default(uuid())
+  transferId        String
+  transfer          StockTransfer      @relation(fields: [transferId], references: [id], onDelete: Restrict)
+  lotId             String
+  lot               StockLot          @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  quantity          Int
+}
+
+model PendingStockTransfer {
+  id                String            @id @default(uuid())
+  vaccineId         String
+  vaccine           Vaccine            @relation(fields: [vaccineId], references: [id])
+  fromType          StockLotOwnerType
+  fromId            String?
+  toType            StockLotOwnerType
+  toId              String?
+  quantity          Int
+  status            PendingTransferStatus @default(PENDING)
+  createdAt         DateTime           @default(now())
+  confirmedAt       DateTime?
+  confirmedById     String?
+  confirmedBy       User?              @relation(fields: [confirmedById], references: [id])
+
+  lots              PendingStockTransferLot[]
+}
+
+model PendingStockTransferLot {
+  id                String            @id @default(uuid())
+  pendingTransferId String
+  pendingTransfer   PendingStockTransfer @relation(fields: [pendingTransferId], references: [id], onDelete: Cascade)
+  lotId             String
+  lot               StockLot          @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  quantity          Int
+}
+
+model StockReservation {
+  id            String                @id @default(uuid())
+  stockLotId    String
+  stockLot      StockLot              @relation(fields: [stockLotId], references: [id])
+  scheduleId    String                @unique
+  schedule      ChildVaccineScheduled @relation(fields: [scheduleId], references: [id])
+  quantity      Int                   @default(1)
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+}
+
+enum PendingTransferStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+}
+
+model Advice {
+  id                String        @id @default(uuid())
+  title             String
+  content           String
+  category          String?
+  ageUnit           AgeUnit?
+  minAge            Int?
+  maxAge            Int?
+  specificAge       Int?
+  isActive          Boolean       @default(true)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+}
+
+model VaccineRequest {
+  id               String           @id @default(uuid())
+  childId          String
+  child            Children         @relation(fields: [childId], references: [id])
+  vaccineId        String
+  vaccine          Vaccine          @relation(fields: [vaccineId], references: [id])
+  vaccineCalendarId String?
+  vaccineCalendar  VaccineCalendar? @relation(fields: [vaccineCalendarId], references: [id])
+  dose             Int              @default(1)
+  status           String           @default("PENDING")
+  requestedAt      DateTime         @default(now())
+  scheduledFor     DateTime?
+  scheduledById    String?
+  scheduledBy      User?            @relation("UserScheduledRequests", fields: [scheduledById], references: [id])
+  appointmentId    String?
+  notes            String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@index([childId])
+  @@index([status])
+  @@index([requestedAt])
+  @@index([scheduledById])
+}
+
+model ChildVaccinationProof {
+  id                String   @id @default(uuid())
+  childId           String
+  child             Children  @relation(fields: [childId], references: [id], onDelete: Cascade)
+  title             String   // Titre du document
+  filePath          String   // Chemin du fichier sur le serveur
+  fileName          String   // Nom original du fichier
+  fileSize          Int?     // Taille en bytes
+  mimeType          String?  // Type MIME (image/jpeg, image/png, etc.)
+  uploadedBy        String?  // ID de l'utilisateur qui a uploadé (null si parent)
+  uploadedAt        DateTime @default(now())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([childId])
+  @@index([uploadedAt])
+}
+
+
