@@ -91,18 +91,23 @@ const requestVerificationCode = async (req, res, next) => {
       },
     });
 
-    // Envoyer le code par WhatsApp
-    await sendVerificationCode({
-      to: parentPhone,
-      parentName: fatherName || motherName || "Parent",
-      verificationCode,
-    });
-
     res.json({
       success: true,
       message: "Code de vérification envoyé par WhatsApp",
       registrationId: child.id,
     });
+
+    // Envoyer le code par WhatsApp (après la réponse)
+    try {
+      await sendVerificationCode({
+        to: parentPhone,
+        parentName: fatherName || motherName || "Parent",
+        verificationCode,
+      });
+    } catch (whatsappError) {
+      console.error("Erreur envoi code vérification WhatsApp:", whatsappError);
+      // Ne pas bloquer la réponse si WhatsApp échoue
+    }
   } catch (error) {
     next(error);
   }
@@ -374,14 +379,6 @@ const parentRegister = async (req, res, next) => {
       },
     });
 
-    // Envoyer le code d'accès par WhatsApp
-    await sendParentAccessCode({
-      to: child.phoneParent,
-      parentName: child.fatherName || child.motherName || "",
-      childName: `${child.firstName} ${child.lastName}`,
-      accessCode: accessCode,
-    });
-
     if (!fullChild) {
       return res.status(404).json({
         success: false,
@@ -453,6 +450,19 @@ const parentRegister = async (req, res, next) => {
         parentName: fullChild.fatherName || fullChild.motherName || "",
       },
     });
+
+    // Envoyer le code d'accès par WhatsApp (après la réponse)
+    try {
+      await sendParentAccessCode({
+        to: child.phoneParent,
+        parentName: child.fatherName || child.motherName || "",
+        childName: `${child.firstName} ${child.lastName}`,
+        accessCode: accessCode,
+      });
+    } catch (whatsappError) {
+      console.error("Erreur envoi code accès WhatsApp:", whatsappError);
+      // Ne pas bloquer la réponse si WhatsApp échoue
+    }
   } catch (error) {
     next(error);
   }
@@ -1693,6 +1703,13 @@ const getAppointments = async (req, res, next) => {
             lastName: true,
           },
         },
+        administeredBy: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
       },
       orderBy: {
         scheduledFor: "asc",
@@ -1708,6 +1725,9 @@ const getAppointments = async (req, res, next) => {
       dose: scheduled.dose ?? 1,
       planner: scheduled.planner
         ? `${scheduled.planner.firstName} ${scheduled.planner.lastName}`
+        : null,
+      administeredBy: scheduled.administeredBy
+        ? `${scheduled.administeredBy.firstName} ${scheduled.administeredBy.lastName}`
         : null,
       status: "scheduled",
     }));
@@ -2102,18 +2122,23 @@ const requestChangePinCode = async (req, res, next) => {
       },
     });
 
-    // Envoyer le code par WhatsApp
-    const parentName = child.fatherName || child.motherName || "Parent";
-    await sendVerificationCode({
-      to: parentPhone,
-      parentName,
-      verificationCode,
-    });
-
     res.json({
       success: true,
       message: "Code de vérification envoyé par WhatsApp",
     });
+
+    // Envoyer le code par WhatsApp (après la réponse)
+    try {
+      const parentName = child.fatherName || child.motherName || "Parent";
+      await sendVerificationCode({
+        to: parentPhone,
+        parentName,
+        verificationCode,
+      });
+    } catch (whatsappError) {
+      console.error("Erreur envoi code vérification WhatsApp:", whatsappError);
+      // Ne pas bloquer la réponse si WhatsApp échoue
+    }
   } catch (error) {
     next(error);
   }

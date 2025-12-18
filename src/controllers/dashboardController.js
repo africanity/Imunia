@@ -171,12 +171,6 @@ const getNationalDashboardStats = async (req, res, next) => {
             },
           },
         },
-        orderBy: {
-          completedByChildren: {
-            _count: "desc",
-          },
-        },
-        take: 5,
       }),
       prisma.childVaccineLate.findMany({
         select: {
@@ -206,9 +200,14 @@ const getNationalDashboardStats = async (req, res, next) => {
       }),
     ]);
 
+    // Trier les vaccins par count et prendre les 5 premiers
+    const topVaccines = vaccinesWithCoverage
+      .sort((a, b) => (b._count?.completedByChildren || 0) - (a._count?.completedByChildren || 0))
+      .slice(0, 5);
+
     const monthlyVaccinations =
       buildMonthlyVaccinationSeries(recentVaccinations);
-    const coverageByVaccine = buildCoverageByVaccine(vaccinesWithCoverage);
+    const coverageByVaccine = buildCoverageByVaccine(topVaccines);
     const topRegions = buildTopRegionsFromLateVaccines(lateVaccines);
 
     res.json({

@@ -102,6 +102,18 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
                                     color: Colors.grey,
                                   ),
                                 ),
+                              if (apt['administeredBy'] != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: Text(
+                                    'Agent : ${apt['administeredBy'] ?? ''}',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 12,
+                                      color: Colors.blue.shade700,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
                             ],
                           ),
                           leading: const Icon(Icons.calendar_today),

@@ -134,11 +134,14 @@ const getAgentReports = async (req, res, next) => {
       else if (quantity < 50) status = "warning";
       
       return {
-        vaccine: stock.vaccine.name,
+        vaccine: stock.vaccine?.name ?? "Vaccin inconnu",
         quantity,
         status,
       };
     });
+    
+    // Critical stocks (quantity < 30) - Compter les stocks du centre de santé
+    const criticalStocks = stocks.filter((stock) => (stock.quantity || 0) < 30).length;
     
     // Recent activity
     const recentActivity = await prisma.childVaccineCompleted.findMany({
@@ -157,11 +160,12 @@ const getAgentReports = async (req, res, next) => {
       totalVaccinations,
       thisMonth,
       thisWeek,
+      criticalStocks,
       stockStatus,
       recentActivity: recentActivity.map((act) => ({
         date: act.administeredAt,
-        child: `${act.child.firstName} ${act.child.lastName}`,
-        vaccine: act.vaccine.name,
+        child: `${act.child?.firstName ?? ""} ${act.child?.lastName ?? ""}`.trim() || "Enfant inconnu",
+        vaccine: act.vaccine?.name ?? "Vaccin inconnu",
       })),
       monthlyTrend,
     });
@@ -230,7 +234,7 @@ const getRegionalReports = async (req, res, next) => {
       },
     });
     
-    // Coverage rate
+    // Coverage rate - inclure les vaccins en retard
     const totalDueVaccines = await prisma.childVaccineDue.count({
       where: {
         child: {
@@ -243,8 +247,22 @@ const getRegionalReports = async (req, res, next) => {
       },
     });
     
-    const coverageRate = totalDueVaccines > 0
-      ? Math.round((totalVaccinations / (totalVaccinations + totalDueVaccines)) * 100)
+    const totalLateVaccines = await prisma.childVaccineLate.count({
+      where: {
+        child: {
+          healthCenter: {
+            district: {
+              commune: { regionId },
+            },
+          },
+        },
+      },
+    });
+    
+    // Couverture = Complétés / (Complétés + Dues + En retard) × 100%
+    const totalPending = totalVaccinations + totalDueVaccines + totalLateVaccines;
+    const coverageRate = totalPending > 0
+      ? Math.round((totalVaccinations / totalPending) * 100)
       : 100;
     
     // Active campaigns
@@ -333,8 +351,18 @@ const getRegionalReports = async (req, res, next) => {
           },
         });
         
-        const districtCoverage = (districtVaccinations + districtDue) > 0
-          ? Math.round((districtVaccinations / (districtVaccinations + districtDue)) * 100)
+        const districtLate = await prisma.childVaccineLate.count({
+          where: {
+            child: {
+              healthCenter: { districtId: district.id },
+            },
+          },
+        });
+        
+        // Couverture = Complétés / (Complétés + Dues + En retard) × 100%
+        const totalDistrictPending = districtVaccinations + districtDue + districtLate;
+        const districtCoverage = totalDistrictPending > 0
+          ? Math.round((districtVaccinations / totalDistrictPending) * 100)
           : 0;
         
         // Check stock status for district
@@ -356,6 +384,14 @@ const getRegionalReports = async (req, res, next) => {
       })
     );
     
+    // Critical stocks (quantity < 30) - Compter les stocks régionaux
+    const criticalStocks = await prisma.stockREGIONAL.count({
+      where: {
+        regionId,
+        quantity: { lt: 30 },
+      },
+    });
+    
     // Alerts
     const alerts = [];
     if (coverageRate < 75) {
@@ -366,11 +402,11 @@ const getRegionalReports = async (req, res, next) => {
       });
     }
     
-    const criticalStocks = centerPerformance.filter((c) => c.stock === "critical").length;
-    if (criticalStocks > 0) {
+    const criticalDistrictStocks = centerPerformance.filter((c) => c.stock === "critical").length;
+    if (criticalDistrictStocks > 0) {
       alerts.push({
         type: "stock",
-        message: `${criticalStocks} district(s) avec stocks critiques`,
+        message: `${criticalDistrictStocks} district(s) avec stocks critiques`,
         severity: "high",
       });
     }
@@ -380,6 +416,7 @@ const getRegionalReports = async (req, res, next) => {
       totalVaccinations,
       coverageRate,
       activeCampaigns,
+      criticalStocks,
       centerPerformance,
       vaccineDistribution,
       monthlyTrend,
@@ -410,8 +447,12 @@ const getNationalReports = async (req, res, next) => {
     const totalHealthCenters = await prisma.healthCenter.count();
     
     const totalDue = await prisma.childVaccineDue.count();
-    const coverageRate = (totalVaccinations + totalDue) > 0
-      ? Math.round((totalVaccinations / (totalVaccinations + totalDue)) * 100 * 10) / 10
+    const totalLate = await prisma.childVaccineLate.count();
+    
+    // Couverture = Complétés / (Complétés + Dues + En retard) × 100%
+    const totalPending = totalVaccinations + totalDue + totalLate;
+    const coverageRate = totalPending > 0
+      ? Math.round((totalVaccinations / totalPending) * 100 * 10) / 10
       : 0;
     
     const campaigns = await prisma.campaign.count({
@@ -421,13 +462,12 @@ const getNationalReports = async (req, res, next) => {
       },
     });
     
-    // Critical stocks (quantity < 30)
-    const allStocks = await prisma.stockHEALTHCENTER.findMany({
+    // Critical stocks (quantity < 30) - Compter les stocks nationaux
+    const criticalStocks = await prisma.stockNATIONAL.count({
       where: {
         quantity: { lt: 30 },
       },
     });
-    const criticalStocks = allStocks.length;
     
     // Monthly vaccinations
     const vaccinations = await prisma.childVaccineCompleted.findMany({
@@ -516,8 +556,22 @@ const getNationalReports = async (req, res, next) => {
           },
         });
         
-        const coverage = (regionVaccinations + regionDue) > 0
-          ? Math.round((regionVaccinations / (regionVaccinations + regionDue)) * 100 * 10) / 10
+        const regionLate = await prisma.childVaccineLate.count({
+          where: {
+            child: {
+              healthCenter: {
+                district: {
+                  commune: { regionId: region.id },
+                },
+              },
+            },
+          },
+        });
+        
+        // Couverture = Complétés / (Complétés + Dues + En retard) × 100%
+        const totalPending = regionVaccinations + regionDue + regionLate;
+        const coverage = totalPending > 0
+          ? Math.round((regionVaccinations / totalPending) * 100 * 10) / 10
           : 0;
         
         return {
@@ -625,8 +679,22 @@ const getRegionDetails = async (req, res, next) => {
       },
     });
     
-    const coverageRate = (totalVaccinations + totalDue) > 0
-      ? Math.round((totalVaccinations / (totalVaccinations + totalDue)) * 100 * 10) / 10
+    const totalLate = await prisma.childVaccineLate.count({
+      where: {
+        child: {
+          healthCenter: {
+            district: {
+              commune: { regionId: region.id },
+            },
+          },
+        },
+      },
+    });
+    
+    // Couverture = Complétés / (Complétés + Dues + En retard) × 100%
+    const totalPending = totalVaccinations + totalDue + totalLate;
+    const coverageRate = totalPending > 0
+      ? Math.round((totalVaccinations / totalPending) * 100 * 10) / 10
       : 0;
     
     const overdueVaccinations = await prisma.childVaccineOverdue.count({
@@ -817,8 +885,18 @@ const getDistrictDetails = async (req, res, next) => {
       },
     });
     
-    const coverageRate = (totalVaccinations + totalDue) > 0
-      ? Math.round((totalVaccinations / (totalVaccinations + totalDue)) * 100 * 10) / 10
+    const totalLate = await prisma.childVaccineLate.count({
+      where: {
+        child: {
+          healthCenter: { districtId: district.id },
+        },
+      },
+    });
+    
+    // Couverture = Complétés / (Complétés + Dues + En retard) × 100%
+    const totalPending = totalVaccinations + totalDue + totalLate;
+    const coverageRate = totalPending > 0
+      ? Math.round((totalVaccinations / totalPending) * 100 * 10) / 10
       : 0;
     
     const overdueVaccinations = await prisma.childVaccineOverdue.count({
@@ -1019,9 +1097,21 @@ const getDistrictReports = async (req, res, next) => {
         },
       },
     });
-
-    const coverageRate = totalDueVaccines > 0
-      ? Math.round((totalVaccinations / (totalVaccinations + totalDueVaccines)) * 100)
+    
+    const totalLateVaccines = await prisma.childVaccineLate.count({
+      where: {
+        child: {
+          healthCenter: {
+            districtId,
+          },
+        },
+      },
+    });
+    
+    // Couverture = Complétés / (Complétés + Dues + En retard) × 100%
+    const totalPending = totalVaccinations + totalDueVaccines + totalLateVaccines;
+    const coverageRate = totalPending > 0
+      ? Math.round((totalVaccinations / totalPending) * 100)
       : 100;
 
     // Monthly trend
@@ -1090,9 +1180,17 @@ const getDistrictReports = async (req, res, next) => {
             child: { healthCenterId: hc.id },
           },
         });
-
-        const hcCoverage = (hcVaccinations + hcDue) > 0
-          ? Math.round((hcVaccinations / (hcVaccinations + hcDue)) * 100)
+        
+        const hcLate = await prisma.childVaccineLate.count({
+          where: {
+            child: { healthCenterId: hc.id },
+          },
+        });
+        
+        // Couverture = Complétés / (Complétés + Dues + En retard) × 100%
+        const totalHcPending = hcVaccinations + hcDue + hcLate;
+        const hcCoverage = totalHcPending > 0
+          ? Math.round((hcVaccinations / totalHcPending) * 100)
           : 0;
 
         // Check stock status for health center
@@ -1114,6 +1212,14 @@ const getDistrictReports = async (req, res, next) => {
       })
     );
 
+    // Critical stocks (quantity < 30) - Compter les stocks district
+    const criticalStocks = await prisma.stockDISTRICT.count({
+      where: {
+        districtId,
+        quantity: { lt: 30 },
+      },
+    });
+    
     // Alerts
     const alerts = [];
     if (coverageRate < 75) {
@@ -1124,11 +1230,11 @@ const getDistrictReports = async (req, res, next) => {
       });
     }
 
-    const criticalStocks = centerPerformance.filter((c) => c.stock === "critical").length;
-    if (criticalStocks > 0) {
+    const criticalCenterStocks = centerPerformance.filter((c) => c.stock === "critical").length;
+    if (criticalCenterStocks > 0) {
       alerts.push({
         type: "stock",
-        message: `${criticalStocks} centre(s) de santé avec stocks critiques`,
+        message: `${criticalCenterStocks} centre(s) de santé avec stocks critiques`,
         severity: "high",
       });
     }
@@ -1137,6 +1243,7 @@ const getDistrictReports = async (req, res, next) => {
       totalCenters,
       totalVaccinations,
       coverageRate,
+      criticalStocks,
       centerPerformance,
       vaccineDistribution,
       monthlyTrend,
@@ -1208,8 +1315,16 @@ const getHealthCenterDetails = async (req, res, next) => {
       },
     });
     
-    const coverageRate = (totalVaccinations + totalDue) > 0
-      ? Math.round((totalVaccinations / (totalVaccinations + totalDue)) * 100 * 10) / 10
+    const totalLate = await prisma.childVaccineLate.count({
+      where: {
+        child: { healthCenterId: healthCenter.id },
+      },
+    });
+    
+    // Couverture = Complétés / (Complétés + Dues + En retard) × 100%
+    const totalPending = totalVaccinations + totalDue + totalLate;
+    const coverageRate = totalPending > 0
+      ? Math.round((totalVaccinations / totalPending) * 100 * 10) / 10
       : 0;
     
     const overdueVaccinations = await prisma.childVaccineOverdue.count({

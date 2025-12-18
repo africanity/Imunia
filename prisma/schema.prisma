@@ -42,6 +42,7 @@ model User {
   vaccinesEscalated      ChildVaccineOverdue[]   @relation("UserAsEscalated")
   confirmedTransfers     PendingStockTransfer[]
   scheduledVaccineRequests VaccineRequest[] @relation("UserScheduledRequests")
+  stockExpirationNotifications StockExpirationNotification[]
 }
 
 enum Role {
@@ -255,6 +256,7 @@ model Children {
   notifications          Notification[]
   vaccineRequests        VaccineRequest[]
   vaccinationProofs      ChildVaccinationProof[]
+  appointmentNotifications AppointmentNotification[]
 }
 
 enum Gender {
@@ -411,6 +413,7 @@ model StockLot {
   transferLots      StockTransferLot[]
   pendingTransferLots PendingStockTransferLot[]
   stockReservations StockReservation[]
+  stockExpirationNotifications StockExpirationNotification[]
 
   @@index([ownerType, ownerId, vaccineId])
 }
@@ -537,6 +540,39 @@ model ChildVaccinationProof {
 
   @@index([childId])
   @@index([uploadedAt])
+}
+
+model StockExpirationNotification {
+  id                    String   @id @default(uuid())
+  stockLotId            String
+  stockLot              StockLot  @relation(fields: [stockLotId], references: [id], onDelete: Cascade)
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notifiedAt            DateTime  @default(now())
+  expirationDate        DateTime
+  daysBeforeExpiration  Int       // 7, 14, 30 jours avant
+  notificationType      String     // "7_DAYS", "14_DAYS", "30_DAYS"
+  
+  @@unique([stockLotId, userId, notificationType])
+  @@index([notifiedAt])
+  @@index([expirationDate])
+}
+
+model AppointmentNotification {
+  id                    String   @id @default(uuid())
+  childId               String
+  child                 Children  @relation(fields: [childId], references: [id], onDelete: Cascade)
+  scheduledVaccineId    String?   // ChildVaccineScheduled.id (optionnel)
+  appointmentDate       DateTime
+  notificationType      String    // "1_WEEK", "2_DAYS", "1_DAY", "SAME_DAY"
+  notifiedAt            DateTime  @default(now())
+  sentVia               String    // "WHATSAPP", "EMAIL", "BOTH"
+  
+  @@unique([childId, notificationType, appointmentDate])
+  @@index([appointmentDate])
+  @@index([notifiedAt])
+  @@index([childId])
+  @@index([scheduledVaccineId])
 }
 
 

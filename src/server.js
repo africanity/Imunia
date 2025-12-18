@@ -32,6 +32,10 @@ const startServer = async () => {
     // Initialiser Socket.io
     initSocket(server);
     console.log("Socket.io initialized");
+
+    // Démarrer le planificateur de tâches
+    require("./jobs/scheduler");
+    console.log("Scheduler initialized");
   } catch (error) {
     console.error("Unable to start server:", error);
     process.exit(1);

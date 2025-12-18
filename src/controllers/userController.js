@@ -260,13 +260,12 @@ const createRegional = async (req, res, next) => {
     return res.status(403).json({ message: "Accès refusé" });
   }  
 
-    const { token, expiresAt } = tokenService.generateActivationToken();
-
     if (!req.body.regionId || !req.body.firstName || !req.body.lastName || !req.body.email || !req.body.phone ) {
       return res.status(400).json({ message: "Remplir les champs obligatoires pour ce rôle." });
     }
 
   try {
+    const { token, expiresAt } = tokenService.generateActivationToken();
     const newRegional = await prisma.user.create({
       data: {
         firstName: req.body.firstName,
@@ -290,13 +289,18 @@ const createRegional = async (req, res, next) => {
     });
     
 
-    await sendInvitationEmail({
-      email: newRegional.email,
-      token,
-      role: newRegional.role,
-      region: region?.name ?? null,
-      user: newRegional,
-    });
+    try {
+      await sendInvitationEmail({
+        email: newRegional.email,
+        token,
+        role: newRegional.role,
+        region: region?.name ?? null,
+        user: newRegional,
+      });
+    } catch (emailError) {
+      console.error("Erreur envoi email invitation:", emailError);
+      // Ne pas bloquer la création si l'email échoue
+    }
 
     /*res.status(201).json({
       user: newRegional.id,
@@ -373,14 +377,19 @@ const createDistricit = async (req, res, next) => {
 
     res.status(201).json(newDistrictUser);
 
-    await sendInvitationEmail({
-      email: newDistrictUser.email,
-      token,
-      role: newDistrictUser.role,
-      region: null,
-      district: newDistrictUser.district?.name ?? null,
-      user: newDistrictUser,
-    });
+    try {
+      await sendInvitationEmail({
+        email: newDistrictUser.email,
+        token,
+        role: newDistrictUser.role,
+        region: null,
+        district: newDistrictUser.district?.name ?? null,
+        user: newDistrictUser,
+      });
+    } catch (emailError) {
+      console.error("Erreur envoi email invitation:", emailError);
+      // Ne pas bloquer la création si l'email échoue
+    }
   } catch (error) {
     if (respondIfUniqueConstraint(error, res, "Cette valeur est déjà utilisée.")) {
       return;
@@ -445,13 +454,18 @@ const createAgentAdmin = async (req, res, next) => {
 
     res.status(201).json(newAgentAdmin);
 
-    await sendInvitationEmail({
-      email: newAgentAdmin.email,
-      token,
-      role: newAgentAdmin.role,
-      healthCenter: newAgentAdmin.healthCenter?.name ?? null,
-      user: newAgentAdmin,
-    });
+    try {
+      await sendInvitationEmail({
+        email: newAgentAdmin.email,
+        token,
+        role: newAgentAdmin.role,
+        healthCenter: newAgentAdmin.healthCenter?.name ?? null,
+        user: newAgentAdmin,
+      });
+    } catch (emailError) {
+      console.error("Erreur envoi email invitation:", emailError);
+      // Ne pas bloquer la création si l'email échoue
+    }
   } catch (error) {
     if (respondIfUniqueConstraint(error, res, "Cette valeur est déjà utilisée.")) {
       return;
@@ -508,13 +522,18 @@ const createAgentStaff = async (req, res, next) => {
 
     res.status(201).json(newAgentStaff);
 
-    await sendInvitationEmail({
-      email: newAgentStaff.email,
-      token,
-      role: newAgentStaff.role,
-      healthCenter: newAgentStaff.healthCenter?.name ?? null,
-      user: newAgentStaff,
-    });
+    try {
+      await sendInvitationEmail({
+        email: newAgentStaff.email,
+        token,
+        role: newAgentStaff.role,
+        healthCenter: newAgentStaff.healthCenter?.name ?? null,
+        user: newAgentStaff,
+      });
+    } catch (emailError) {
+      console.error("Erreur envoi email invitation:", emailError);
+      // Ne pas bloquer la création si l'email échoue
+    }
   } catch (error) {
     next(error);
   }
@@ -643,6 +662,42 @@ const listUsers = async (req, res, next) => {
     });
 
     res.json(users);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /api/users/health-center/agents — récupérer les agents du centre de santé de l'utilisateur
+ */
+const getHealthCenterAgents = async (req, res, next) => {
+  try {
+    if (req.user.role !== "AGENT" || !req.user.healthCenterId) {
+      return res.status(403).json({ message: "Accès refusé" });
+    }
+
+    const agents = await prisma.user.findMany({
+      where: {
+        role: "AGENT",
+        healthCenterId: req.user.healthCenterId,
+        isActive: true,
+      },
+      orderBy: [
+        { agentLevel: "asc" }, // ADMIN en premier
+        { lastName: "asc" },
+        { firstName: "asc" },
+      ],
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        phone: true,
+        agentLevel: true,
+      },
+    });
+
+    res.json(agents);
   } catch (error) {
     next(error);
   }
@@ -1322,6 +1377,7 @@ module.exports = {
   //createUser,
   activateUser,
   listUsers,
+  getHealthCenterAgents,
   updateSelf,
   verifyEmail,
   getUserDeletionSummary,

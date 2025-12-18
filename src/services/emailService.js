@@ -407,6 +407,144 @@ const sendNewPhotosUploadedEmail = async ({
   return results;
 };
 
+const sendStockExpirationAlert = async ({
+  email,
+  agentName,
+  lots,
+  ownerInfo,
+}) => {
+  const lotsList = lots
+    .map(
+      (lot) => `
+    <tr style="border-bottom: 1px solid #e5e7eb;">
+      <td style="padding: 10px;">${lot.vaccine.name}</td>
+      <td style="padding: 10px; text-align: center;">${lot.remainingQuantity}</td>
+      <td style="padding: 10px;">${new Date(lot.expiration).toLocaleDateString("fr-FR", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      })}</td>
+      <td style="padding: 10px;">
+        <span style="color: ${lot.daysBeforeExpiration <= 7 ? "#ef4444" : lot.daysBeforeExpiration <= 14 ? "#f59e0b" : "#3b82f6"}; font-weight: bold;">
+          ${lot.daysBeforeExpiration} jours
+        </span>
+      </td>
+    </tr>
+  `
+    )
+    .join("");
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; line-height:1.6; color:#333;">
+      <h2 style="color:#ef4444;">⚠️ Alerte : Stock bientôt expiré</h2>
+      <p>Bonjour ${agentName || "Agent"},</p>
+      <p>Nous vous informons que certains lots de vaccins sont sur le point d'expirer dans votre ${ownerInfo.type.toLowerCase()} <b>${ownerInfo.name}</b>${ownerInfo.location ? ` (${ownerInfo.location})` : ""}.</p>
+      
+      <div style="background:#fef2f2; padding:15px; border-radius:5px; margin:20px 0; border-left:4px solid #ef4444;">
+        <h3 style="color:#ef4444; margin-top:0;">Lots concernés :</h3>
+        <table style="width: 100%; border-collapse: collapse; margin-top: 10px;">
+          <thead>
+            <tr style="background:#fee2e2;">
+              <th style="padding: 10px; text-align: left;">Vaccin</th>
+              <th style="padding: 10px; text-align: center;">Quantité restante</th>
+              <th style="padding: 10px; text-align: left;">Date d'expiration</th>
+              <th style="padding: 10px; text-align: left;">Délai</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${lotsList}
+          </tbody>
+        </table>
+      </div>
+
+      <p><strong>Action requise :</strong> Veuillez utiliser ces vaccins en priorité ou les transférer vers d'autres centres si nécessaire.</p>
+      
+      <p style="text-align:center; margin:20px 0;">
+        <a href="${process.env.FRONTEND_URL || ""}/dashboard/stocks" style="background:#ef4444; color:#fff; padding:12px 24px; text-decoration:none; border-radius:5px; font-size:16px;">
+          Voir le stock
+        </a>
+      </p>
+      
+      <p style="font-size:12px; color:#888;">
+        Ceci est un email automatique, merci de ne pas y répondre.
+      </p>
+    </div>
+  `;
+
+  try {
+    const info = await transporter.sendMail({
+      from: `"Imunia" <${process.env.SMTP_USER}>`,
+      to: email,
+      subject: `⚠️ Alerte : ${lots.length} lot(s) de vaccin(s) bientôt expiré(s)`,
+      html,
+    });
+    console.log(`Email d'alerte stock expiré envoyé à ${email}:`, info.response);
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    console.error(`Erreur envoi email alerte stock à ${email}:`, error.message);
+    return { success: false, error: error.message };
+  }
+};
+
+const sendAppointmentReminderEmail = async ({
+  email,
+  childName,
+  vaccineName,
+  appointmentDate,
+  healthCenterName,
+  notificationType,
+}) => {
+  const typeMessages = {
+    "1_WEEK": "dans une semaine",
+    "2_DAYS": "dans 2 jours",
+    "1_DAY": "demain",
+    "SAME_DAY": "aujourd'hui",
+  };
+
+  const message = typeMessages[notificationType] || "prochainement";
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; line-height:1.6; color:#333;">
+      <h2 style="color:#2c7be5;">📅 Rappel de rendez-vous de vaccination</h2>
+      <p>Bonjour,</p>
+      <p>Nous vous rappelons que votre enfant <b>${childName}</b> a un rendez-vous de vaccination ${message}.</p>
+      
+      <div style="background:#eff6ff; padding:15px; border-radius:5px; margin:20px 0; border-left:4px solid #2c7be5;">
+        <p><strong>Enfant :</strong> ${childName}</p>
+        <p><strong>Vaccin :</strong> ${vaccineName}</p>
+        <p><strong>Date et heure :</strong> ${appointmentDate}</p>
+        <p><strong>Centre de santé :</strong> ${healthCenterName || "Non spécifié"}</p>
+      </div>
+
+      <p><strong>⚠️ Important :</strong> Veuillez vous présenter au centre de santé à l'heure prévue avec le carnet de vaccination de votre enfant.</p>
+      
+      <p style="text-align:center; margin:20px 0;">
+        <a href="${process.env.FRONTEND_URL || ""}/dashboard" style="background:#2c7be5; color:#fff; padding:12px 24px; text-decoration:none; border-radius:5px; font-size:16px;">
+          Voir les rendez-vous
+        </a>
+      </p>
+      
+      <p style="font-size:12px; color:#888;">
+        Ceci est un email automatique, merci de ne pas y répondre.
+      </p>
+    </div>
+  `;
+
+  try {
+    const info = await transporter.sendMail({
+      from: `"Imunia" <${process.env.SMTP_USER}>`,
+      to: email,
+      subject: `📅 Rappel : Rendez-vous de vaccination ${message} - ${childName}`,
+      html,
+    });
+    console.log(`Email rappel rendez-vous envoyé à ${email}:`, info.response);
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    console.error(`Erreur envoi email rappel rendez-vous à ${email}:`, error.message);
+    return { success: false, error: error.message };
+  }
+};
+
 module.exports = {
   sendInvitationEmail,
   sendPasswordResetEmail,
@@ -416,4 +554,6 @@ module.exports = {
   sendChildAccountActivatedEmail,
   sendChildAccountPendingEmail,
   sendNewPhotosUploadedEmail,
+  sendStockExpirationAlert,
+  sendAppointmentReminderEmail,
 };

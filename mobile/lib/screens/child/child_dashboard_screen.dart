@@ -1071,6 +1071,7 @@ class _ChildDashboardScreenState extends State<ChildDashboardScreen> {
         ],
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Icône de calendrier
           Container(
@@ -1088,11 +1089,12 @@ class _ChildDashboardScreenState extends State<ChildDashboardScreen> {
               size: 24,
             ),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 12),
           // Informations du rendez-vous
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
                   vaccineName,
@@ -1113,6 +1115,8 @@ class _ChildDashboardScreenState extends State<ChildDashboardScreen> {
                       color: Colors.grey.shade600,
                       fontWeight: FontWeight.w500,
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
                 const SizedBox(height: 4),
@@ -1124,52 +1128,74 @@ class _ChildDashboardScreenState extends State<ChildDashboardScreen> {
                       color: Colors.grey[600],
                     ),
                     const SizedBox(width: 4),
-                    Text(
-                      '$dateLabel$timeLabel',
-                      style: GoogleFonts.poppins(
-                        fontSize: 13,
-                        color: Colors.grey[600],
-                        fontWeight: FontWeight.w500,
+                    Flexible(
+                      child: Text(
+                        '$dateLabel$timeLabel',
+                        style: GoogleFonts.poppins(
+                          fontSize: 13,
+                          color: Colors.grey[600],
+                          fontWeight: FontWeight.w500,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],
                 ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          Flexible(
-            child: Align(
-              alignment: Alignment.topRight,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: statusColor.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
+                if (appointment['administeredBy'] != null) ...[
+                  const SizedBox(height: 6),
+                  Row(
                     children: [
                       Icon(
-                        statusIcon,
+                        Icons.person,
                         size: 14,
-                        color: statusColor,
+                        color: Colors.blue[700],
                       ),
                       const SizedBox(width: 4),
-                      Text(
-                        statusText,
-                        style: GoogleFonts.poppins(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: statusColor,
+                      Flexible(
+                        child: Text(
+                          'Agent : ${appointment['administeredBy'] ?? ''}',
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            color: Colors.blue[700],
+                            fontWeight: FontWeight.w500,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ],
                   ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          // Badge de statut
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            decoration: BoxDecoration(
+              color: statusColor.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  statusIcon,
+                  size: 14,
+                  color: statusColor,
                 ),
-              ),
+                const SizedBox(width: 4),
+                Text(
+                  statusText,
+                  style: GoogleFonts.poppins(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: statusColor,
+                  ),
+                ),
+              ],
             ),
           ),
         ],

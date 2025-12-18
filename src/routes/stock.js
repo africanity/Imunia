@@ -49,6 +49,7 @@ router.put("/reduce-regional", requireAuth, stockController.reduceStockREGIONAL)
 router.put("/reduce-district", requireAuth, stockController.reduceStockDISTRICT);
 router.put("/reduce-health-center", requireAuth, stockController.reduceStockHEALTHCENTER);
 
+router.post("/national/lot/:id/reduce", requireAuth, stockController.reduceLotNATIONAL);
 router.delete("/lots/:id", requireAuth, stockController.deleteLot);
 router.delete("/national", requireAuth, stockController.deleteStockNATIONAL);
 router.delete("/regional", requireAuth, stockController.deleteStockREGIONAL);

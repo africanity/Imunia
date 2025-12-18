@@ -685,7 +685,7 @@ class _VaccinationListScreenState extends State<VaccinationListScreen> with Sing
                 ),
                 const SizedBox(width: AppSpacing.xs),
                 Text(
-                  "Par: ${vaccine["administeredByName"]}",
+                  "Par: ${vaccine["administeredByName"] ?? ''}",
                   style: GoogleFonts.poppins(
                     fontSize: 13,
                     color: const Color(0xFF64748B),

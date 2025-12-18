@@ -1473,6 +1473,39 @@ const deleteVaccine = async (req, res, next) => {
 };
 
 
+// Helper pour valider qu'un agent appartient au centre de santé
+const validateAgentBelongsToHealthCenter = async (tx, agentId, healthCenterId) => {
+  if (!agentId) return null; // Si pas d'agent spécifié, c'est OK (optionnel)
+  
+  const agent = await tx.user.findUnique({
+    where: { id: agentId },
+    select: { id: true, role: true, healthCenterId: true, isActive: true },
+  });
+
+  if (!agent) {
+    throw Object.assign(new Error("Agent introuvable"), { status: 404 });
+  }
+
+  if (agent.role !== "AGENT") {
+    throw Object.assign(new Error("L'utilisateur sélectionné n'est pas un agent"), {
+      status: 400,
+    });
+  }
+
+  if (!agent.isActive) {
+    throw Object.assign(new Error("L'agent sélectionné n'est pas actif"), { status: 400 });
+  }
+
+  if (agent.healthCenterId !== healthCenterId) {
+    throw Object.assign(
+      new Error("L'agent sélectionné n'appartient pas au centre de santé de l'enfant"),
+      { status: 403 }
+    );
+  }
+
+  return agent;
+};
+
 const ScheduleVaccine = async (req, res, next) => {
   if (req.user.role !== "AGENT" || !req.user.healthCenterId) {
     return res.status(403).json({ message: "Accès refusé" });
@@ -1484,6 +1517,7 @@ const ScheduleVaccine = async (req, res, next) => {
       vaccineId,
       vaccineCalendarId = null,
       scheduledFor,
+      administeredById = null,
     } = req.body ?? {};
 
     if (!childId || !vaccineId || !scheduledFor) {
@@ -1513,6 +1547,13 @@ const ScheduleVaccine = async (req, res, next) => {
         throw Object.assign(new Error("Accès refusé"), { status: 403 });
       }
 
+      // Valider que l'agent sélectionné appartient au centre de santé
+      let validatedAdministeredById = null;
+      if (administeredById) {
+        await validateAgentBelongsToHealthCenter(tx, administeredById, child.healthCenterId);
+        validatedAdministeredById = administeredById;
+      }
+
       const vaccine = await tx.vaccine.findUnique({
         where: { id: vaccineId },
         select: { dosesRequired: true, gender: true },
@@ -1535,7 +1576,7 @@ const ScheduleVaccine = async (req, res, next) => {
       const totalDoses =
         Number.isFinite(dosesRequired) && dosesRequired > 0 ? dosesRequired : 1;
 
-      // Vérifier le nombre total de doses (complétées + programmées)
+      // Compter les doses complétées et programmées pour calculer le numéro de dose
       const completedCount = await tx.childVaccineCompleted.count({
         where: { childId, vaccineId },
       });
@@ -1544,14 +1585,8 @@ const ScheduleVaccine = async (req, res, next) => {
         where: { childId, vaccineId },
       });
 
-      if (completedCount + scheduledCount >= totalDoses) {
-        throw Object.assign(
-          new Error("Toutes les doses de ce vaccin ont déjà été administrées ou programmées."),
-          { status: 400 },
-        );
-      }
-
       // Calculer une dose initiale (sera réassignée après)
+      // Permet de programmer des doses supplémentaires même si dosesRequired est atteint
       const initialDose = completedCount + scheduledCount + 1;
 
       const reservation = await reserveDoseForHealthCenter(tx, {
@@ -1568,6 +1603,7 @@ const ScheduleVaccine = async (req, res, next) => {
           vaccineCalendarId,
           scheduledFor: scheduleDate,
           plannerId: req.user.id,
+          administeredById: validatedAdministeredById,
           dose: initialDose, // Dose temporaire, sera réassignée
         },
         include: {
@@ -1736,6 +1772,13 @@ const listScheduledVaccines = async (req, res, next) => {
             specificAge: true,
           },
         },
+        administeredBy: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
       },
       orderBy: [
         { scheduledFor: "asc" },
@@ -1793,6 +1836,13 @@ const listScheduledVaccines = async (req, res, next) => {
             }
           : null,
         dose: entry.dose ?? 1,
+        administeredBy: entry.administeredBy
+          ? {
+              id: entry.administeredBy.id,
+              firstName: entry.administeredBy.firstName,
+              lastName: entry.administeredBy.lastName,
+            }
+          : null,
       };
     });
 
@@ -1819,6 +1869,7 @@ const completeVaccine = async (req, res, next) => {
           vaccineCalendarId: true,
           vaccineId: true,
           plannerId: true,
+          administeredById: true,
           dose: true,
           child: { select: { healthCenterId: true } },
         },
@@ -1842,7 +1893,7 @@ const completeVaccine = async (req, res, next) => {
           vaccineCalendarId: scheduled.vaccineCalendarId,
           vaccineId: scheduled.vaccineId,
           notes: req.body.notes,
-          administeredById: scheduled.plannerId,
+          administeredById: scheduled.administeredById ?? scheduled.plannerId, // Utiliser administeredById si défini, sinon plannerId
           dose,
         },
       });
@@ -2111,7 +2162,7 @@ const updateScheduledVaccine = async (req, res, next) => {
 
   try {
     const { id } = req.params;
-    const { scheduledFor, vaccineId, vaccineCalendarId } = req.body ?? {};
+    const { scheduledFor, vaccineId, vaccineCalendarId, administeredById = null } = req.body ?? {};
     if (!scheduledFor || !vaccineId) {
       return res.status(400).json({
         message: "scheduledFor et vaccineId sont requis",
@@ -2134,6 +2185,7 @@ const updateScheduledVaccine = async (req, res, next) => {
           vaccineId: true,
           vaccineCalendarId: true,
           dose: true,
+          administeredById: true,
           child: {
             select: {
               healthCenterId: true,
@@ -2160,6 +2212,16 @@ const updateScheduledVaccine = async (req, res, next) => {
         });
       }
 
+      // Valider que l'agent sélectionné appartient au centre de santé
+      let validatedAdministeredById = null;
+      if (administeredById) {
+        await validateAgentBelongsToHealthCenter(tx, administeredById, scheduled.child.healthCenterId);
+        validatedAdministeredById = administeredById;
+      } else if (scheduled.administeredById) {
+        // Si on ne fournit pas d'administeredById mais qu'il y en a un existant, le conserver
+        validatedAdministeredById = scheduled.administeredById;
+      }
+
       originalSnapshot = {
         childId: scheduled.childId,
         scheduledFor: scheduled.scheduledFor,
@@ -2167,6 +2229,7 @@ const updateScheduledVaccine = async (req, res, next) => {
         vaccineName: scheduled.vaccine?.name ?? null,
         vaccineCalendarId: scheduled.vaccineCalendarId,
         dose: scheduled.dose ?? 1,
+        administeredById: scheduled.administeredById,
       };
 
       if (scheduled.vaccineId !== vaccineId) {
@@ -2197,14 +2260,8 @@ const updateScheduledVaccine = async (req, res, next) => {
             vaccineId,
           },
         });
-        if (completedCount + scheduledCount >= totalDoses) {
-          throw Object.assign(
-            new Error(
-              "Toutes les doses de ce vaccin ont déjà été administrées ou programmées.",
-            ),
-            { code: "DOSE_LIMIT" },
-          );
-        }
+        // Calculer le numéro de dose initial (sera réassigné après)
+        // Permet de programmer des doses supplémentaires même si dosesRequired est atteint
         const initialDose = completedCount + scheduledCount + 1;
 
         const targetCalendarId =
@@ -2228,6 +2285,7 @@ const updateScheduledVaccine = async (req, res, next) => {
             vaccineCalendarId: targetCalendarId,
             scheduledFor: scheduleDate,
             plannerId: req.user.id,
+            administeredById: validatedAdministeredById,
             dose: initialDose,
           },
           include: {
@@ -2263,16 +2321,34 @@ const updateScheduledVaccine = async (req, res, next) => {
         return recreatedWithCorrectDose || recreated;
       }
 
+      // Si administeredById est fourni, le valider et l'inclure dans la mise à jour
+      let updateData = {
+        scheduledFor: scheduleDate,
+        ...(vaccineCalendarId !== undefined ? { vaccineCalendarId } : {}),
+      };
+
+      if (administeredById !== undefined) {
+        if (administeredById) {
+          await validateAgentBelongsToHealthCenter(tx, administeredById, scheduled.child.healthCenterId);
+          updateData.administeredById = administeredById;
+        } else {
+          // Si null est fourni explicitement, on peut le mettre à null
+          updateData.administeredById = null;
+        }
+      }
+
       const updatedSchedule = await tx.childVaccineScheduled.update({
         where: { id },
-        data: {
-          scheduledFor: scheduleDate,
-          ...(vaccineCalendarId !== undefined
-            ? { vaccineCalendarId }
-            : {}),
-        },
+        data: updateData,
         include: {
           vaccine: { select: { id: true, name: true, dosesRequired: true } },
+          administeredBy: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+            },
+          },
         },
       });
 
@@ -2284,6 +2360,13 @@ const updateScheduledVaccine = async (req, res, next) => {
         where: { id },
         include: {
           vaccine: { select: { id: true, name: true, dosesRequired: true } },
+          administeredBy: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+            },
+          },
         },
       });
 
@@ -2348,6 +2431,24 @@ const updateScheduledVaccine = async (req, res, next) => {
           title: "Dose mise à jour",
           message: `La dose prévue pour ce rendez-vous est désormais la dose ${updated.dose ?? 1}.`,
         });
+      }
+
+      // Vérifier si l'agent a changé
+      const originalAdministeredById = originalSnapshot.administeredById ?? null;
+      const newAdministeredById = updated.administeredBy?.id ?? null;
+      if (originalAdministeredById !== newAdministeredById) {
+        if (newAdministeredById && updated.administeredBy) {
+          const agentName = `${updated.administeredBy.firstName} ${updated.administeredBy.lastName}`.trim();
+          updates.push({
+            title: "Agent modifié",
+            message: `L'agent qui va administrer le vaccin est désormais ${agentName}.`,
+          });
+        } else if (originalAdministeredById && !newAdministeredById) {
+          updates.push({
+            title: "Agent retiré",
+            message: "L'agent assigné à ce rendez-vous a été retiré.",
+          });
+        }
       }
 
       if (updates.length > 0) {

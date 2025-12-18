@@ -141,7 +141,15 @@ function NationalStocksPage() {
   const [updateModalOpen, setUpdateModalOpen] = useState(false);
   const [updateContext, setUpdateContext] = useState<{ vaccineId: string; vaccineName: string; currentQuantity: number } | null>(null);
   const [updateQuantity, setUpdateQuantity] = useState<string>("");
-  const [updateMode, setUpdateMode] = useState<"set" | "add">("set");
+  const [updateMode, setUpdateMode] = useState<"reduce" | "add">("add");
+  
+  // États pour la diminution par lots
+  const [reduceQuantity, setReduceQuantity] = useState<string>("");
+  const [reduceRemaining, setReduceRemaining] = useState<number>(0);
+  const [reduceLots, setReduceLots] = useState<LotItem[]>([]);
+  const [reduceLoading, setReduceLoading] = useState(false);
+  const [reduceError, setReduceError] = useState<string | null>(null);
+  const [selectedLotId, setSelectedLotId] = useState<string | null>(null);
   const [addQuantity, setAddQuantity] = useState<string>("");
   const [addQuantityError, setAddQuantityError] = useState<string | null>(null);
   const [addExpiration, setAddExpiration] = useState<string>("");
@@ -172,10 +180,7 @@ function NationalStocksPage() {
   const todayIso = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const currentQuantityValue = updateContext?.currentQuantity ?? 0;
   const parsedUpdateQuantity = Number(updateQuantity);
-  const requiresExpirationForSet =
-    updateMode === "set" &&
-    Number.isFinite(parsedUpdateQuantity) &&
-    parsedUpdateQuantity > currentQuantityValue;
+  const parsedReduceQuantity = Number(reduceQuantity);
 
   const fetchNationalStats = useCallback(async () => {
     if (!accessToken) {
@@ -297,6 +302,12 @@ function NationalStocksPage() {
     setUpdateExpiration("");
     setAddQuantityError(null);
     setUpdating(false);
+    // Reset reduce states
+    setReduceQuantity("");
+    setReduceRemaining(0);
+    setReduceLots([]);
+    setReduceError(null);
+    setSelectedLotId(null);
   };
 
   const handleCreateStock = async (event: FormEvent) => {
@@ -472,18 +483,24 @@ function NationalStocksPage() {
     }
   };
 
-  const openUpdateModal = (stock: NationalStock) => {
+  const openUpdateModal = async (stock: NationalStock) => {
     setUpdateContext({
       vaccineId: stock.vaccineId,
       vaccineName: stock.vaccine.name,
       currentQuantity: stock.quantity ?? 0,
     });
     setUpdateQuantity(String(stock.quantity ?? 0));
-    setUpdateMode("set");
+    setUpdateMode("add");
     setAddQuantity("");
     setAddExpiration("");
     setUpdateExpiration("");
     setAddQuantityError(null);
+    // Reset reduce states
+    setReduceQuantity("");
+    setReduceRemaining(0);
+    setReduceLots([]);
+    setReduceError(null);
+    setSelectedLotId(null);
     setUpdateModalOpen(true);
   };
 
@@ -543,6 +560,114 @@ function NationalStocksPage() {
         err instanceof Error
           ? err.message
           : "Impossible de modifier le stock national"
+      );
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  // Charger les lots pour la diminution
+  const loadLotsForReduce = useCallback(async () => {
+    if (!updateContext?.vaccineId || !accessToken) return;
+
+    try {
+      setReduceLoading(true);
+      setReduceError(null);
+      const response = await fetch(
+        `${API_URL}/api/stock/national/${updateContext.vaccineId}/lots`,
+        {
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Impossible de charger les lots");
+      }
+
+      const payload: LotResponse = await response.json();
+      const validLots = payload.lots.filter((lot) => lot.remainingQuantity > 0);
+      setReduceLots(validLots);
+      setReduceRemaining(payload.totalRemaining);
+    } catch (err) {
+      console.error("Erreur chargement lots:", err);
+      setReduceError(
+        err instanceof Error ? err.message : "Impossible de charger les lots"
+      );
+    } finally {
+      setReduceLoading(false);
+    }
+  }, [updateContext?.vaccineId, accessToken]);
+
+  // Quand on passe en mode reduce, charger les lots
+  useEffect(() => {
+    if (updateMode === "reduce" && updateContext?.vaccineId && !reduceLots.length && !reduceLoading) {
+      loadLotsForReduce();
+    }
+  }, [updateMode, updateContext?.vaccineId, loadLotsForReduce, reduceLots.length, reduceLoading]);
+
+  const handleReduceLotSubmit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!updateContext || !accessToken || !selectedLotId) return;
+
+    const quantityValue = Number(reduceQuantity);
+    if (!Number.isFinite(quantityValue) || quantityValue <= 0) {
+      setReduceError("Veuillez saisir une quantité valide supérieure à 0.");
+      return;
+    }
+
+    const selectedLot = reduceLots.find((lot) => lot.id === selectedLotId);
+    if (!selectedLot) {
+      setReduceError("Lot sélectionné introuvable.");
+      return;
+    }
+
+    // Si la quantité à diminuer est supérieure à celle du lot, on diminue le lot au maximum
+    const actualQuantityToReduce = Math.min(quantityValue, selectedLot.remainingQuantity);
+
+    try {
+      setReduceError(null);
+      setUpdating(true);
+
+      const response = await fetch(
+        `${API_URL}/api/stock/national/lot/${selectedLotId}/reduce`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            quantity: actualQuantityToReduce,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.message ?? "Erreur lors de la diminution");
+      }
+
+      // Recharger les lots
+      await loadLotsForReduce();
+      
+      // Si on a encore de la quantité à diminuer, réinitialiser la sélection
+      const remainingToReduce = parsedReduceQuantity - actualQuantityToReduce;
+      if (remainingToReduce > 0) {
+        // Il reste de la quantité à diminuer, on continue
+        setReduceQuantity(String(remainingToReduce));
+        setSelectedLotId(null);
+      } else {
+        // On a terminé la diminution
+        resetUpdateModal();
+        await Promise.all([fetchNationalStocks(), fetchNationalStats()]);
+      }
+    } catch (err) {
+      console.error("Erreur diminution lot:", err);
+      setReduceError(
+        err instanceof Error ? err.message : "Impossible de diminuer le lot"
       );
     } finally {
       setUpdating(false);
@@ -1121,17 +1246,6 @@ function NationalStocksPage() {
               <div className="mt-6 flex flex-col gap-4 md:flex-row">
                 <button
                   type="button"
-                  onClick={() => setUpdateMode("set")}
-                  className={`flex-1 rounded-2xl border px-4 py-3 text-center text-sm font-medium transition ${
-                    updateMode === "set"
-                      ? "border-emerald-300 bg-emerald-50 text-emerald-700 shadow"
-                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                  }`}
-                >
-                  Remplacer la quantité
-                </button>
-                <button
-                  type="button"
                   onClick={() => setUpdateMode("add")}
                   className={`flex-1 rounded-2xl border px-4 py-3 text-center text-sm font-medium transition ${
                     updateMode === "add"
@@ -1141,59 +1255,104 @@ function NationalStocksPage() {
                 >
                   Ajouter au stock
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setUpdateMode("reduce")}
+                  className={`flex-1 rounded-2xl border px-4 py-3 text-center text-sm font-medium transition ${
+                    updateMode === "reduce"
+                      ? "border-orange-300 bg-orange-50 text-orange-700 shadow"
+                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  Diminuer
+                </button>
               </div>
 
-              {updateMode === "set" ? (
-                <form onSubmit={handleSetQuantitySubmit} className="mt-6 space-y-4">
+              {updateMode === "reduce" ? (
+                <form onSubmit={handleReduceLotSubmit} className="mt-6 space-y-4">
                   <div className="space-y-1">
                     <label className="text-sm font-medium text-slate-600">
-                      Nouvelle quantité nationale
+                      Quantité à diminuer
                     </label>
                     <input
-                      value={updateQuantity}
-                      onChange={(event) => setUpdateQuantity(event.target.value)}
+                      value={reduceQuantity}
+                      onChange={(event) => setReduceQuantity(event.target.value)}
                       type="number"
-                      min="0"
-                      className="w-full rounded-xl border border-slate-200 px-4 py-3 text-slate-800 transition focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                      min="1"
+                      className="w-full rounded-xl border border-slate-200 px-4 py-3 text-slate-800 transition focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-200"
                       required
+                      disabled={updating}
                     />
                     <p className="text-xs text-slate-500">
-                      Quantité actuelle : {(updateContext.currentQuantity ?? 0).toLocaleString("fr-FR")}
+                      Quantité totale disponible : {reduceRemaining.toLocaleString("fr-FR")} doses
                     </p>
                   </div>
-                  {requiresExpirationForSet && (
-                    <div className="space-y-1">
+
+                  {reduceLoading ? (
+                    <div className="text-center py-4 text-slate-500">
+                      Chargement des lots...
+                    </div>
+                  ) : reduceLots.length === 0 ? (
+                    <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                      Aucun lot disponible avec une quantité restante.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
                       <label className="text-sm font-medium text-slate-600">
-                        Date d&apos;expiration du stock ajouté
+                        Choisir le lot dans lequel diminuer
                       </label>
-                      <input
-                        type="date"
-                        value={updateExpiration}
-                        onChange={(event) => setUpdateExpiration(event.target.value)}
-                        className="w-full rounded-xl border border-slate-200 px-4 py-3 text-slate-800 transition focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-200"
-                        required
-                      />
-                      <p className="text-xs text-slate-500">
-                        Ajout de{" "}
-                        {(parsedUpdateQuantity - currentQuantityValue).toLocaleString("fr-FR")}{" "}
-                        doses supplémentaires.
-                      </p>
+                      <div className="max-h-60 overflow-y-auto space-y-2 border border-slate-200 rounded-xl p-3">
+                        {reduceLots.map((lot) => (
+                          <button
+                            key={lot.id}
+                            type="button"
+                            onClick={() => setSelectedLotId(lot.id)}
+                            className={`w-full text-left p-3 rounded-lg border transition ${
+                              selectedLotId === lot.id
+                                ? "border-orange-500 bg-orange-50"
+                                : "border-slate-200 hover:bg-slate-50"
+                            }`}
+                          >
+                            <div className="flex justify-between items-center">
+                              <div>
+                                <div className="font-medium text-slate-900">
+                                  Lot expirant le {new Date(lot.expiration).toLocaleDateString("fr-FR")}
+                                </div>
+                                <div className="text-xs text-slate-500 mt-1">
+                                  Quantité disponible : {lot.remainingQuantity.toLocaleString("fr-FR")} doses
+                                </div>
+                              </div>
+                              {selectedLotId === lot.id && (
+                                <div className="text-orange-600">✓</div>
+                              )}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   )}
+
+                  {reduceError && (
+                    <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                      {reduceError}
+                    </div>
+                  )}
+
                   <div className="flex justify-end gap-3">
                     <button
                       type="button"
                       onClick={resetUpdateModal}
                       className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100"
+                      disabled={updating}
                     >
                       Annuler
                     </button>
                     <button
                       type="submit"
-                      disabled={updating}
-                      className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-700 disabled:opacity-60"
+                      disabled={updating || !selectedLotId || !reduceQuantity || reduceLots.length === 0}
+                      className="rounded-xl bg-orange-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-orange-700 disabled:opacity-60"
                     >
-                      {updating ? "Enregistrement…" : "Enregistrer"}
+                      {updating ? "Diminution…" : "Diminuer"}
                     </button>
                   </div>
                 </form>

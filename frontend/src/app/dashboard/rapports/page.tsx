@@ -17,6 +17,7 @@ import {
   FileText,
   ChevronRight,
   ArrowLeft,
+  Target,
 } from "lucide-react";
 import TabNavigation from "./components/TabNavigation";
 import RegionsTab from "./components/RegionsTab";
@@ -1548,6 +1549,343 @@ export default function RapportsPage() {
               regionPerformance={nationalStats.regionPerformance}
               onRegionClick={handleRegionClick}
             />
+          )}
+
+          {/* Onglet Par Vaccin */}
+          {drillLevel === "national" && activeTab === "vaccines" && nationalStats && (
+            <div className="space-y-6">
+              <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl shadow-md p-6 border border-purple-200">
+                <h2 className="text-2xl font-bold text-purple-900 mb-2 flex items-center gap-2">
+                  <Package className="h-6 w-6" />
+                  Analyse détaillée par vaccin
+                </h2>
+                <p className="text-purple-700">
+                  Distribution et performance de chaque type de vaccin administré
+                </p>
+              </div>
+
+              {/* Distribution globale par vaccin */}
+              <div className="bg-white rounded-xl shadow-md p-6">
+                <h3 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
+                  <BarChart3 className="h-5 w-5 text-purple-600" />
+                  Distribution des vaccinations par vaccin
+                </h3>
+                {nationalStats.coverageByVaccine && nationalStats.coverageByVaccine.length > 0 ? (
+                  <div className="space-y-4">
+                    {nationalStats.coverageByVaccine.map((vaccine, idx) => (
+                      <div key={idx} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
+                        <div className="flex justify-between items-center mb-3">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
+                              <Package className="h-5 w-5 text-purple-600" />
+                            </div>
+                            <div>
+                              <span className="font-bold text-lg text-gray-900">{vaccine.name}</span>
+                              <p className="text-sm text-gray-500">Vaccin administré</p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-2xl font-bold text-purple-600">
+                              {vaccine.value.toLocaleString()}
+                            </div>
+                            <div className="text-sm text-gray-500">
+                              {vaccine.percentage}% du total
+                            </div>
+                          </div>
+                        </div>
+                        <div className="h-4 bg-gray-100 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-gradient-to-r from-purple-500 to-indigo-600 rounded-full transition-all duration-500"
+                            style={{ width: `${Math.max(vaccine.percentage, 2)}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-gray-500">
+                    <Package className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+                    <p className="text-sm">Aucune donnée de distribution disponible</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Statistiques par vaccin */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="bg-white rounded-xl shadow-md p-6">
+                  <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                    <TrendingUp className="h-5 w-5 text-green-600" />
+                    Total de vaccinations
+                  </h3>
+                  <div className="text-4xl font-bold text-gray-900 mb-2">
+                    {nationalStats.coverageByVaccine?.reduce((sum, v) => sum + v.value, 0).toLocaleString() || 0}
+                  </div>
+                  <p className="text-sm text-gray-600">Nombre total de doses administrées</p>
+                </div>
+
+                <div className="bg-white rounded-xl shadow-md p-6">
+                  <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                    <Activity className="h-5 w-5 text-blue-600" />
+                    Types de vaccins
+                  </h3>
+                  <div className="text-4xl font-bold text-gray-900 mb-2">
+                    {nationalStats.coverageByVaccine?.length || 0}
+                  </div>
+                  <p className="text-sm text-gray-600">Vaccins différents administrés</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Onglet Indicateurs */}
+          {drillLevel === "national" && activeTab === "performance" && nationalStats && (
+            <div className="space-y-6">
+              <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-xl shadow-md p-6 border border-orange-200">
+                <h2 className="text-2xl font-bold text-orange-900 mb-2 flex items-center gap-2">
+                  <Target className="h-6 w-6" />
+                  Indicateurs de performance clés (KPIs)
+                </h2>
+                <p className="text-orange-700">
+                  Vue d'ensemble des métriques essentielles du programme de vaccination
+                </p>
+              </div>
+
+              {/* Indicateurs globaux */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl shadow-lg p-6 text-white">
+                  <div className="flex items-center justify-between mb-4">
+                    <Users className="h-8 w-8 opacity-90" />
+                    <div className="text-xs bg-white/20 px-2 py-1 rounded">Total</div>
+                  </div>
+                  <div className="text-3xl font-bold mb-1">
+                    {nationalStats.summary.totalChildren.toLocaleString()}
+                  </div>
+                  <div className="text-sm opacity-90">Enfants enregistrés</div>
+                </div>
+
+                <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-xl shadow-lg p-6 text-white">
+                  <div className="flex items-center justify-between mb-4">
+                    <Activity className="h-8 w-8 opacity-90" />
+                    <div className="text-xs bg-white/20 px-2 py-1 rounded">Effectuées</div>
+                  </div>
+                  <div className="text-3xl font-bold mb-1">
+                    {nationalStats.summary.totalVaccinations.toLocaleString()}
+                  </div>
+                  <div className="text-sm opacity-90">Vaccinations totales</div>
+                </div>
+
+                <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl shadow-lg p-6 text-white">
+                  <div className="flex items-center justify-between mb-4">
+                    <TrendingUp className="h-8 w-8 opacity-90" />
+                    <div className="text-xs bg-white/20 px-2 py-1 rounded">
+                      {nationalStats.summary.coverageRate >= 90
+                        ? "Excellent"
+                        : nationalStats.summary.coverageRate >= 75
+                        ? "Bon"
+                        : "Faible"}
+                    </div>
+                  </div>
+                  <div className="text-3xl font-bold mb-1">
+                    {nationalStats.summary.coverageRate.toFixed(1)}%
+                  </div>
+                  <div className="text-sm opacity-90">Taux de couverture</div>
+                </div>
+
+                <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-xl shadow-lg p-6 text-white">
+                  <div className="flex items-center justify-between mb-4">
+                    <MapPin className="h-8 w-8 opacity-90" />
+                    <div className="text-xs bg-white/20 px-2 py-1 rounded">Actives</div>
+                  </div>
+                  <div className="text-3xl font-bold mb-1">{nationalStats.summary.totalRegions}</div>
+                  <div className="text-sm opacity-90">Régions actives</div>
+                </div>
+
+                <div className="bg-gradient-to-br from-teal-500 to-teal-600 rounded-xl shadow-lg p-6 text-white">
+                  <div className="flex items-center justify-between mb-4">
+                    <Building2 className="h-8 w-8 opacity-90" />
+                    <div className="text-xs bg-white/20 px-2 py-1 rounded">Total</div>
+                  </div>
+                  <div className="text-3xl font-bold mb-1">
+                    {nationalStats.summary.totalHealthCenters.toLocaleString()}
+                  </div>
+                  <div className="text-sm opacity-90">Centres de santé</div>
+                </div>
+
+                <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl shadow-lg p-6 text-white">
+                  <div className="flex items-center justify-between mb-4">
+                    <Package className="h-8 w-8 opacity-90" />
+                    <div className="text-xs bg-white/20 px-2 py-1 rounded">Critiques</div>
+                  </div>
+                  <div className="text-3xl font-bold mb-1">
+                    {nationalStats.summary.criticalStocks}
+                  </div>
+                  <div className="text-sm opacity-90">Stocks critiques</div>
+                </div>
+              </div>
+
+              {/* Performance par région */}
+              <div className="bg-white rounded-xl shadow-md p-6">
+                <h3 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
+                  <MapPin className="h-5 w-5 text-orange-600" />
+                  Performance par région
+                </h3>
+                {nationalStats.regionPerformance && nationalStats.regionPerformance.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b-2 border-gray-200">
+                          <th className="text-left py-3 px-4 font-semibold text-gray-700">Région</th>
+                          <th className="text-left py-3 px-4 font-semibold text-gray-700">Enfants</th>
+                          <th className="text-left py-3 px-4 font-semibold text-gray-700">Vaccinations</th>
+                          <th className="text-left py-3 px-4 font-semibold text-gray-700">Couverture</th>
+                          <th className="text-left py-3 px-4 font-semibold text-gray-700">Statut</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {nationalStats.regionPerformance.map((region, idx) => (
+                          <tr
+                            key={idx}
+                            onClick={() => handleRegionClick(region.region)}
+                            className="border-b border-gray-100 hover:bg-orange-50 transition cursor-pointer"
+                          >
+                            <td className="py-4 px-4">
+                              <div className="font-medium text-orange-600 hover:text-orange-800 flex items-center gap-2">
+                                {region.region}
+                                <ChevronRight className="h-4 w-4" />
+                              </div>
+                            </td>
+                            <td className="py-4 px-4">
+                              <div className="text-gray-700">{region.totalChildren.toLocaleString()}</div>
+                            </td>
+                            <td className="py-4 px-4">
+                              <div className="font-medium text-gray-900">
+                                {region.vaccinations.toLocaleString()}
+                              </div>
+                            </td>
+                            <td className="py-4 px-4">
+                              <div className="flex items-center gap-2">
+                                <div className="flex-1 max-w-[120px]">
+                                  <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                                    <div
+                                      className={`h-full rounded-full ${
+                                        region.coverage >= 90
+                                          ? "bg-green-500"
+                                          : region.coverage >= 75
+                                          ? "bg-blue-500"
+                                          : region.coverage >= 60
+                                          ? "bg-yellow-500"
+                                          : "bg-red-500"
+                                      }`}
+                                      style={{ width: `${region.coverage}%` }}
+                                    />
+                                  </div>
+                                </div>
+                                <span className="text-sm font-bold text-gray-700">
+                                  {region.coverage.toFixed(1)}%
+                                </span>
+                              </div>
+                            </td>
+                            <td className="py-4 px-4">
+                              <span
+                                className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${
+                                  region.coverage >= 90
+                                    ? "bg-green-100 text-green-700"
+                                    : region.coverage >= 75
+                                    ? "bg-blue-100 text-blue-700"
+                                    : region.coverage >= 60
+                                    ? "bg-yellow-100 text-yellow-700"
+                                    : "bg-red-100 text-red-700"
+                                }`}
+                              >
+                                {region.coverage >= 90
+                                  ? "Excellent"
+                                  : region.coverage >= 75
+                                  ? "Bon"
+                                  : region.coverage >= 60
+                                  ? "Moyen"
+                                  : "Faible"}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-gray-500">
+                    <MapPin className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+                    <p className="text-sm">Aucune donnée régionale disponible</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Top régions */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl shadow-md p-6 border border-green-200">
+                  <h3 className="text-xl font-bold text-green-900 mb-4 flex items-center gap-2">
+                    🏆 Top 5 meilleures régions
+                  </h3>
+                  {nationalStats.top5BestRegions && nationalStats.top5BestRegions.length > 0 ? (
+                    <div className="space-y-3">
+                      {nationalStats.top5BestRegions.map((region, idx) => (
+                        <div
+                          key={idx}
+                          onClick={() => handleRegionClick(region.region)}
+                          className="flex items-center justify-between bg-white/60 rounded-lg p-3 cursor-pointer hover:bg-white hover:shadow-md transition-all transform hover:scale-105"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 bg-green-600 text-white rounded-full flex items-center justify-center font-bold text-sm">
+                              {idx + 1}
+                            </div>
+                            <span className="font-medium text-gray-900">{region.region}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className="text-lg font-bold text-green-700">
+                              {region.coverage.toFixed(1)}%
+                            </div>
+                            <ChevronRight className="h-5 w-5 text-green-600" />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-center text-gray-500 py-4">Aucune donnée disponible</p>
+                  )}
+                </div>
+
+                <div className="bg-gradient-to-br from-red-50 to-orange-50 rounded-xl shadow-md p-6 border border-red-200">
+                  <h3 className="text-xl font-bold text-red-900 mb-4 flex items-center gap-2">
+                    ⚠️ Régions nécessitant attention
+                  </h3>
+                  {nationalStats.top5WorstRegions && nationalStats.top5WorstRegions.length > 0 ? (
+                    <div className="space-y-3">
+                      {nationalStats.top5WorstRegions.map((region, idx) => (
+                        <div
+                          key={idx}
+                          onClick={() => handleRegionClick(region.region)}
+                          className="flex items-center justify-between bg-white/60 rounded-lg p-3 cursor-pointer hover:bg-white hover:shadow-md transition-all transform hover:scale-105"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 bg-red-600 text-white rounded-full flex items-center justify-center font-bold text-sm">
+                              ⚠
+                            </div>
+                            <span className="font-medium text-gray-900">{region.region}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className="text-lg font-bold text-red-700">
+                              {region.coverage.toFixed(1)}%
+                            </div>
+                            <ChevronRight className="h-5 w-5 text-red-600" />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-center text-gray-500 py-4">Aucune donnée disponible</p>
+                  )}
+                </div>
+              </div>
+            </div>
           )}
 
           {/* Vue détaillée d'une région */}

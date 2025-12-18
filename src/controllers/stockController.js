@@ -1171,36 +1171,41 @@ const addStockREGIONAL = async (req, res, next) => {
       });
     });
 
-    // Envoyer un email à tous les régionaux de cette région
-    const { sendStockTransferNotificationEmail } = require("../services/emailService");
-    const regionalUsers = await prisma.user.findMany({
-      where: {
-        role: "REGIONAL",
-        regionId: regionId,
-        isActive: true,
-      },
-      select: {
-        email: true,
-      },
-    });
-
-    if (regionalUsers.length > 0) {
-      const emails = regionalUsers.map((u) => u.email).filter(Boolean);
-      if (emails.length > 0) {
-        await sendStockTransferNotificationEmail({
-          emails,
-          vaccineName,
-          quantity: qty,
-          regionName,
-        });
-      }
-    }
-
     res.json({
       national: updatedNational,
       pendingTransfer,
       message: "Envoi créé avec succès. Le stock régional sera mis à jour après confirmation de réception.",
     });
+
+    // Envoyer un email à tous les régionaux de cette région (après la réponse)
+    try {
+      const { sendStockTransferNotificationEmail } = require("../services/emailService");
+      const regionalUsers = await prisma.user.findMany({
+        where: {
+          role: "REGIONAL",
+          regionId: regionId,
+          isActive: true,
+        },
+        select: {
+          email: true,
+        },
+      });
+
+      if (regionalUsers.length > 0) {
+        const emails = regionalUsers.map((u) => u.email).filter(Boolean);
+        if (emails.length > 0) {
+          await sendStockTransferNotificationEmail({
+            emails,
+            vaccineName,
+            quantity: qty,
+            regionName,
+          });
+        }
+      }
+    } catch (emailError) {
+      console.error("Erreur envoi email notification transfert:", emailError);
+      // Ne pas bloquer la réponse si l'email échoue
+    }
   } catch (error) {
     if (error.status) {
       return res.status(error.status).json({ message: error.message });
@@ -1338,36 +1343,41 @@ const addStockDISTRICT = async (req, res, next) => {
       });
     });
 
-    // Envoyer un email à tous les utilisateurs du district
-    const { sendStockTransferNotificationEmail } = require("../services/emailService");
-    const districtUsers = await prisma.user.findMany({
-      where: {
-        role: "DISTRICT",
-        districtId: districtId,
-        isActive: true,
-      },
-      select: {
-        email: true,
-      },
-    });
-
-    if (districtUsers.length > 0) {
-      const emails = districtUsers.map((u) => u.email).filter(Boolean);
-      if (emails.length > 0) {
-        await sendStockTransferNotificationEmail({
-          emails,
-          vaccineName,
-          quantity: qty,
-          regionName: districtName,
-        });
-      }
-    }
-
     res.json({
       regional: updatedRegional,
       pendingTransfer,
       message: "Envoi créé avec succès. Le stock district sera mis à jour après confirmation de réception.",
     });
+
+    // Envoyer un email à tous les utilisateurs du district (après la réponse)
+    try {
+      const { sendStockTransferNotificationEmail } = require("../services/emailService");
+      const districtUsers = await prisma.user.findMany({
+        where: {
+          role: "DISTRICT",
+          districtId: districtId,
+          isActive: true,
+        },
+        select: {
+          email: true,
+        },
+      });
+
+      if (districtUsers.length > 0) {
+        const emails = districtUsers.map((u) => u.email).filter(Boolean);
+        if (emails.length > 0) {
+          await sendStockTransferNotificationEmail({
+            emails,
+            vaccineName,
+            quantity: qty,
+            regionName: districtName,
+          });
+        }
+      }
+    } catch (emailError) {
+      console.error("Erreur envoi email notification transfert:", emailError);
+      // Ne pas bloquer la réponse si l'email échoue
+    }
   } catch (error) {
     if (error.status) {
       return res.status(error.status).json({ message: error.message });
@@ -1498,37 +1508,42 @@ const addStockHEALTHCENTER = async (req, res, next) => {
       });
     });
 
-    // Envoyer un email à tous les agents admin du centre de santé
-    const { sendStockTransferNotificationEmail } = require("../services/emailService");
-    const healthCenterAdminAgents = await prisma.user.findMany({
-      where: {
-        role: "AGENT",
-        agentLevel: "ADMIN",
-        healthCenterId: healthCenterId,
-        isActive: true,
-      },
-      select: {
-        email: true,
-      },
-    });
-
-    if (healthCenterAdminAgents.length > 0) {
-      const emails = healthCenterAdminAgents.map((u) => u.email).filter(Boolean);
-      if (emails.length > 0) {
-        await sendStockTransferNotificationEmail({
-          emails,
-          vaccineName,
-          quantity: qty,
-          regionName: healthCenterName,
-        });
-      }
-    }
-
     res.json({
       district: updatedDistrict,
       pendingTransfer,
       message: "Envoi créé avec succès. Le stock du centre de santé sera mis à jour après confirmation de réception.",
     });
+
+    // Envoyer un email à tous les agents admin du centre de santé (après la réponse)
+    try {
+      const { sendStockTransferNotificationEmail } = require("../services/emailService");
+      const healthCenterAdminAgents = await prisma.user.findMany({
+        where: {
+          role: "AGENT",
+          agentLevel: "ADMIN",
+          healthCenterId: healthCenterId,
+          isActive: true,
+        },
+        select: {
+          email: true,
+        },
+      });
+
+      if (healthCenterAdminAgents.length > 0) {
+        const emails = healthCenterAdminAgents.map((u) => u.email).filter(Boolean);
+        if (emails.length > 0) {
+          await sendStockTransferNotificationEmail({
+            emails,
+            vaccineName,
+            quantity: qty,
+            regionName: healthCenterName,
+          });
+        }
+      }
+    } catch (emailError) {
+      console.error("Erreur envoi email notification transfert:", emailError);
+      // Ne pas bloquer la réponse si l'email échoue
+    }
   } catch (error) {
     if (error.status) {
       return res.status(error.status).json({ message: error.message });
@@ -1882,6 +1897,105 @@ const updateStockHEALTHCENTER = async (req, res, next) => {
     });
 
     res.json(updated);
+  } catch (error) {
+    if (error.status) {
+      return res.status(error.status).json({ message: error.message });
+    }
+    next(error);
+  }
+};
+
+const reduceLotNATIONAL = async (req, res, next) => {
+  if (req.user.role !== "NATIONAL") {
+    return res.status(403).json({ message: "Accès refusé" });
+  }
+
+  const { id: lotId } = req.params;
+  const { quantity } = req.body ?? {};
+  const qty = Number(quantity);
+
+  if (!lotId) {
+    return res.status(400).json({ message: "lotId est requis" });
+  }
+
+  if (!Number.isFinite(qty) || qty <= 0) {
+    return res.status(400).json({ message: "quantity doit être un nombre positif" });
+  }
+
+  try {
+    let updatedLot = null;
+
+    await prisma.$transaction(async (tx) => {
+      const lot = await tx.stockLot.findUnique({
+        where: { id: lotId },
+        include: {
+          vaccine: { select: { name: true } },
+        },
+      });
+
+      if (!lot) {
+        throw Object.assign(new Error("Lot introuvable"), { status: 404 });
+      }
+
+      // Vérifier que le lot appartient au niveau NATIONAL
+      if (lot.ownerType !== OWNER_TYPES.NATIONAL || lot.ownerId !== null) {
+        throw Object.assign(new Error("Ce lot n'appartient pas au stock national"), {
+          status: 403,
+        });
+      }
+
+      // Vérifier que la quantité à réduire ne dépasse pas la quantité restante
+      if (qty > lot.remainingQuantity) {
+        throw Object.assign(
+          new Error(
+            `La quantité à réduire (${qty}) dépasse la quantité restante du lot (${lot.remainingQuantity})`
+          ),
+          { status: 400 }
+        );
+      }
+
+      // Réduire la quantité restante du lot
+      const newRemainingQuantity = lot.remainingQuantity - qty;
+
+      updatedLot = await tx.stockLot.update({
+        where: { id: lotId },
+        data: {
+          remainingQuantity: newRemainingQuantity,
+        },
+        include: {
+          vaccine: { select: { name: true } },
+        },
+      });
+
+      // Mettre à jour la quantité du stock NATIONAL (somme des lots)
+      const allLots = await tx.stockLot.findMany({
+        where: {
+          vaccineId: lot.vaccineId,
+          ownerType: OWNER_TYPES.NATIONAL,
+          ownerId: null,
+        },
+        select: { remainingQuantity: true },
+      });
+
+      const totalQuantity = allLots.reduce(
+        (sum, l) => sum + (l.remainingQuantity ?? 0),
+        0
+      );
+
+      await tx.stockNATIONAL.update({
+        where: { vaccineId: lot.vaccineId },
+        data: { quantity: totalQuantity },
+      });
+
+      // Mettre à jour la date d'expiration la plus proche
+      await updateNearestExpiration(tx, {
+        vaccineId: lot.vaccineId,
+        ownerType: OWNER_TYPES.NATIONAL,
+        ownerId: null,
+      });
+    });
+
+    res.json(updatedLot);
   } catch (error) {
     if (error.status) {
       return res.status(error.status).json({ message: error.message });
@@ -3023,6 +3137,7 @@ module.exports = {
   getRegionalStockStats,
   getDistrictStockStats,
   getHealthCenterStockStats,
+  reduceLotNATIONAL,
   deleteLot,
   getHealthCenterReservations,
   getPendingTransfers,

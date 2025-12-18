@@ -58,9 +58,9 @@ const createAdvice = async (req, res, next) => {
         content: content.trim(),
         category: category?.trim() || null,
         ageUnit: ageUnit || null,
-        minAge: minAge !== null && minAge !== undefined ? parseInt(minAge) : null,
-        maxAge: maxAge !== null && maxAge !== undefined ? parseInt(maxAge) : null,
-        specificAge: specificAge !== null && specificAge !== undefined ? parseInt(specificAge) : null,
+        minAge: minAge !== null && minAge !== undefined ? (isNaN(parseInt(minAge)) ? null : parseInt(minAge)) : null,
+        maxAge: maxAge !== null && maxAge !== undefined ? (isNaN(parseInt(maxAge)) ? null : parseInt(maxAge)) : null,
+        specificAge: specificAge !== null && specificAge !== undefined ? (isNaN(parseInt(specificAge)) ? null : parseInt(specificAge)) : null,
         isActive: isActive !== undefined ? isActive : true,
       },
     });
@@ -93,7 +93,7 @@ const updateAdvice = async (req, res, next) => {
     }
 
     // Validation: soit specificAge, soit (minAge et maxAge)
-    if (specificAge !== null && (minAge !== null || maxAge !== null)) {
+    if (specificAge != null && (minAge != null || maxAge != null)) {
       return res.status(400).json({
         message: "Utilisez soit specificAge, soit minAge/maxAge, pas les deux",
       });
@@ -106,9 +106,9 @@ const updateAdvice = async (req, res, next) => {
         ...(content !== undefined && { content: content.trim() }),
         ...(category !== undefined && { category: category?.trim() || null }),
         ...(ageUnit !== undefined && { ageUnit: ageUnit || null }),
-        ...(minAge !== undefined && { minAge: minAge !== null ? parseInt(minAge) : null }),
-        ...(maxAge !== undefined && { maxAge: maxAge !== null ? parseInt(maxAge) : null }),
-        ...(specificAge !== undefined && { specificAge: specificAge !== null ? parseInt(specificAge) : null }),
+        ...(minAge !== undefined && { minAge: minAge !== null ? (isNaN(parseInt(minAge)) ? null : parseInt(minAge)) : null }),
+        ...(maxAge !== undefined && { maxAge: maxAge !== null ? (isNaN(parseInt(maxAge)) ? null : parseInt(maxAge)) : null }),
+        ...(specificAge !== undefined && { specificAge: specificAge !== null ? (isNaN(parseInt(specificAge)) ? null : parseInt(specificAge)) : null }),
         ...(isActive !== undefined && { isActive }),
       },
     });

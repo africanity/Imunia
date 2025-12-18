@@ -109,6 +109,40 @@ export default function ChildDetailsModal({
   const [currentNextAppointment, setCurrentNextAppointment] = useState<string | null>(
     child.nextAppointment ?? null,
   );
+  const [agents, setAgents] = useState<Array<{ id: string; firstName: string; lastName: string; email: string; agentLevel: string | null }>>([]);
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const [loadingAgents, setLoadingAgents] = useState(false);
+
+  // Charger les agents du centre de santé
+  const fetchAgents = useCallback(async () => {
+    setLoadingAgents(true);
+    try {
+      const response = await fetch(`${apiBase}/api/users/health-center/agents`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        console.error("Erreur chargement agents:", response.status);
+        return;
+      }
+
+      const data = await response.json();
+      setAgents(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error("Erreur chargement agents:", err);
+    } finally {
+      setLoadingAgents(false);
+    }
+  }, [apiBase, token]);
+
+  useEffect(() => {
+    if (canSchedule) {
+      fetchAgents();
+    }
+  }, [canSchedule, fetchAgents]);
 
   const fetchDetail = useCallback(async () => {
     setLoading(true);
@@ -275,6 +309,7 @@ export default function ChildDetailsModal({
     setScheduleDate("");
     setScheduleError(null);
     setScheduleSubmitting(false);
+    setSelectedAgentId(null);
   };
 
   const handleSubmitSchedule = async (event: React.FormEvent) => {
@@ -318,6 +353,7 @@ export default function ChildDetailsModal({
           vaccineId: selectedOption.vaccineId,
           vaccineCalendarId: selectedOption.calendarId,
           scheduledFor: scheduledFor.toISOString(),
+          administeredById: selectedAgentId || null,
         }),
       });
 
@@ -465,37 +501,35 @@ export default function ChildDetailsModal({
                     <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 flex-shrink-0">
                       <Calendar className="h-4 w-4 text-amber-600" />
                     </div>
-                    <div className="text-xs text-slate-600 min-w-0">
+                    <div className="text-xs text-slate-600 min-w-0 flex-1">
                       <p className="font-semibold text-slate-900">Prochain rendez-vous</p>
                       {currentNextAppointment ? (
-                        <p className="text-xs">{formatDate(currentNextAppointment, true)}</p>
+                        <p className="text-xs mt-0.5">{formatDate(currentNextAppointment, true)}</p>
                       ) : (
-                        <p className="text-xs text-slate-500">Non planifié</p>
+                        <p className="text-xs text-slate-500 mt-0.5">Non planifié</p>
                       )}
-                      {canSchedule && (
-                        <div className="mt-1.5">
-                          {scheduleOptions.length > 0 ? (
-                            <button
-                              type="button"
-                              onClick={handleOpenSchedule}
-                              className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-amber-700 transition hover:bg-amber-100"
-                            >
-                              <CalendarPlus className="h-3.5 w-3.5" />
-                              Programmer
-                            </button>
-                          ) : (
-                            <p className="text-xs text-slate-400">
-                              Aucun vaccin à programmer
-                            </p>
-                          )}
-                          {scheduleError && scheduleOptions.length === 0 && (
-                            <div className="mt-1.5 flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs text-red-600">
-                              <AlertCircle className="h-3.5 w-3.5" />
-                              {scheduleError}
-                            </div>
-                          )}
-                        </div>
-                      )}
+                      <div className="mt-1.5">
+                        {scheduleOptions.length > 0 ? (
+                          <button
+                            type="button"
+                            onClick={handleOpenSchedule}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-amber-700 transition hover:bg-amber-100"
+                          >
+                            <CalendarPlus className="h-3.5 w-3.5" />
+                            Programmer
+                          </button>
+                        ) : (
+                          <p className="text-xs text-slate-400">
+                            Aucun vaccin à programmer
+                          </p>
+                        )}
+                        {scheduleError && scheduleOptions.length === 0 && (
+                          <div className="mt-1.5 flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs text-red-600">
+                            <AlertCircle className="h-3.5 w-3.5" />
+                            {scheduleError}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -618,6 +652,36 @@ export default function ChildDetailsModal({
                   min={new Date().toISOString().slice(0, 16)}
                   required
                 />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="agentSelect"
+                  className="text-xs font-semibold uppercase tracking-wide text-slate-500"
+                >
+                  Agent qui administrera le vaccin (optionnel)
+                </label>
+                {loadingAgents ? (
+                  <div className="mt-1 flex items-center gap-2 text-sm text-slate-500">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Chargement des agents...
+                  </div>
+                ) : (
+                  <select
+                    id="agentSelect"
+                    value={selectedAgentId ?? ""}
+                    onChange={(event) => setSelectedAgentId(event.target.value || null)}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                  >
+                    <option value="">Aucun agent spécifié</option>
+                    {agents.map((agent) => (
+                      <option key={agent.id} value={agent.id}>
+                        {agent.firstName} {agent.lastName}
+                        {agent.agentLevel === "ADMIN" ? " (Admin)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
 
               {scheduleError && (

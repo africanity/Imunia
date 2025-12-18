@@ -116,6 +116,25 @@ const login = async (req, res, next) => {
 
     const user = matchingUsers[0];
 
+    // Valider que l'utilisateur a les relations requises selon son rôle
+    if (user.role === "AGENT" && !user.healthCenterId) {
+      return res.status(403).json({
+        message: "Compte incomplet : l'agent doit être associé à un centre de santé.",
+      });
+    }
+
+    if (user.role === "DISTRICT" && !user.district) {
+      return res.status(403).json({
+        message: "Compte incomplet : l'utilisateur DISTRICT doit être associé à un district.",
+      });
+    }
+
+    if (user.role === "REGIONAL" && !user.region) {
+      return res.status(403).json({
+        message: "Compte incomplet : l'utilisateur REGIONAL doit être associé à une région.",
+      });
+    }
+
     let expiredLotsSummary = [];
 
     if (user.role === "NATIONAL") {
