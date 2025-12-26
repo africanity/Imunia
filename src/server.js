@@ -1,3 +1,12 @@
+const path = require("path");
+require("dotenv").config({ path: path.resolve(__dirname, "../.env") });
+
+console.log("SMTP_USER:", process.env.SMTP_USER);
+console.log("DATABASE_URL:", process.env.DATABASE_URL);
+console.log("SMTP_USER:", process.env.SMTP_USER);
+console.log("DATABASE_URL:", process.env.DATABASE_URL);
+
+
 const app = require("./app");
 const prisma = require("./config/prismaClient");
 const { initSocket } = require("./socket");
@@ -34,7 +43,9 @@ const startServer = async () => {
     console.log("Socket.io initialized");
 
     // Démarrer le planificateur de tâches
+  if (process.env.NODE_ENV !== "test" && process.env.DISABLE_CRON !== "true") {
     require("./jobs/scheduler");
+  }
     console.log("Scheduler initialized");
   } catch (error) {
     console.error("Unable to start server:", error);
