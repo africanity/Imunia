@@ -1,4 +1,5 @@
-require("dotenv").config();
+const path = require("path");
+require("dotenv").config({ path: path.resolve(__dirname, "../.env") });
 
 const bcrypt = require("bcryptjs");
 const prisma = require("../src/config/prismaClient");
@@ -9,12 +10,12 @@ async function createSuperAdmin() {
   const args = process.argv.slice(2);
   
   if (args.length < 4) {
-    console.error("Usage: node scripts/create-superadmin.js <firstName> <lastName> <email> <password> [phone]");
-    console.error("Example: node scripts/create-superadmin.js Admin Super admin@example.com password123 +221771234567");
+    console.error("Usage: node scripts/create-superadmin.js <firstName> <lastName> <email> <password>");
+    console.error("Example: node scripts/create-superadmin.js Admin Super admin@example.com password123");
     process.exit(1);
   }
 
-  const [firstName, lastName, email, password, phone = "+221771234567"] = args;
+  const [firstName, lastName, email, password] = args;
 
   try {
     // Vérifier si l'email existe déjà
@@ -36,7 +37,6 @@ async function createSuperAdmin() {
         firstName,
         lastName,
         email,
-        phone,
         password: hashedPassword,
         role: "SUPERADMIN",
         isActive: true,
