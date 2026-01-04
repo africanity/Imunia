@@ -1,9 +1,7 @@
-
-const path = require("path");
-require("dotenv").config({
-  path: path.resolve(__dirname, "../.env")
-});
-
+// S'assurer que dotenv est chargé
+if (!process.env.SMTP_USER) {
+  require("dotenv").config();
+}
 
 const cron = require("node-cron");
 const { checkStockExpirations } = require("./stockExpirationJob");

@@ -18,6 +18,7 @@ describe("DB integration - User", () => {
         firstName: "Test",
         lastName: "User",
         email: "test.user@example.com",
+        emailVerified: true,
         password: "hash",
         phone: "+221000000000",
         role: "NATIONAL",

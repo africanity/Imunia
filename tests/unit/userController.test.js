@@ -208,7 +208,6 @@ describe('userController', () => {
           firstName: 'John',
           lastName: 'Doe',
           email: 'regional@test.com',
-          phone: '+221123456789',
           role: 'REGIONAL',
           regionId: 'region-1',
           isActive: false,
@@ -433,7 +432,6 @@ describe('userController', () => {
           firstName: 'John',
           lastName: 'Doe',
           email: 'district@test.com',
-          phone: '+221123456789',
           role: 'DISTRICT',
           regionId: 'region-1',
           districtId: 'district-1',
@@ -581,7 +579,6 @@ describe('userController', () => {
           firstName: 'John',
           lastName: 'Doe',
           email: 'agent@test.com',
-          phone: '+221123456789',
           role: 'AGENT',
           agentLevel: 'ADMIN',
           districtId: 'district-1',
@@ -703,7 +700,6 @@ describe('userController', () => {
           firstName: 'John',
           lastName: 'Doe',
           email: 'staff@test.com',
-          phone: '+221123456789',
           code: 'STAFF001',
           role: 'AGENT',
           agentLevel: 'STAFF',
@@ -775,7 +771,7 @@ describe('userController', () => {
 
       expect(res.status).toHaveBeenCalledWith(400);
       expect(res.json).toHaveBeenCalledWith({
-        message: 'Activation invalide.',
+        message: 'Utilisateur non trouvé.',
       });
     });
 
@@ -799,7 +795,7 @@ describe('userController', () => {
 
       expect(res.status).toHaveBeenCalledWith(400);
       expect(res.json).toHaveBeenCalledWith({
-        message: 'Activation invalide.',
+        message: 'Ce compte est déjà actif.',
       });
     });
 
@@ -890,6 +886,7 @@ describe('userController', () => {
           isActive: true,
           activationToken: null,
           activationExpires: null,
+          emailVerified: true,
         },
       });
       expect(res.status).toHaveBeenCalledWith(204);
@@ -2689,7 +2686,6 @@ describe('userController', () => {
           firstName: true,
           lastName: true,
           email: true,
-          phone: true,
           agentLevel: true,
         },
       });

@@ -23,6 +23,9 @@ router.use("/mobile", require("./mobile"));
 router.use("/vaccine-requests", require("./vaccineRequests"));
 router.use("/reports", require("./reports"));
 router.use("/vaccination-proofs", require("./vaccinationProofs"));
+router.use("/superadmin", require("./superadmin"));
+router.use("/notifications", require("./notifications"));
+router.use("/event-logs", require("./eventLog"));
 
 module.exports = router;
 

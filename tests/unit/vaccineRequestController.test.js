@@ -669,12 +669,22 @@ describe('vaccineRequestController', () => {
   describe('cancelVaccineRequest', () => {
     it('devrait annuler une demande avec succès', async () => {
       req.params.id = 'request-1';
+      req.user.role = 'PARENT'; // Not AGENT, so it will call update
       const mockRequest = {
         id: 'request-1',
         status: 'PENDING',
+        childId: 'child-1',
         child: {
+          id: 'child-1',
+          firstName: 'John',
+          lastName: 'Doe',
           healthCenterId: 'healthcenter-1',
         },
+        vaccine: {
+          id: 'vaccine-1',
+          name: 'BCG',
+        },
+        dose: 1,
       };
       prisma.vaccineRequest.findUnique.mockResolvedValue(mockRequest);
       prisma.vaccineRequest.update.mockResolvedValue({

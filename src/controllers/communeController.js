@@ -11,7 +11,7 @@ const collectCommuneCascadeData = async (tx, communeId) => {
       id: true,
       name: true,
       region: { select: { id: true, name: true } },
-      district: { select: { id: true, name: true } },
+      districts: { select: { id: true, name: true } },
     },
   });
 
@@ -210,12 +210,18 @@ const listCommunes = async (req, res, next) => {
   try {
     let whereClause = {};
 
+    // Pour SUPERADMIN, accepter regionId depuis query params
+    const overrideRegionId = req.user.role === "SUPERADMIN" ? req.query.regionId : null;
+
     if (isRegional(req.user)) {
       if (!req.user.regionId) {
         return res.json({ total: 0, items: [] });
       }
       whereClause = { regionId: req.user.regionId };
-    } else if (!isNational(req.user)) {
+    } else if (req.user.role === "SUPERADMIN" && overrideRegionId) {
+      // Filtrer par regionId pour le superadmin
+      whereClause = { regionId: overrideRegionId };
+    } else if (!isNational(req.user) && req.user.role !== "SUPERADMIN") {
       return res.status(403).json({ message: "Accès refusé" });
     }
 
@@ -223,7 +229,7 @@ const listCommunes = async (req, res, next) => {
       where: whereClause,
       include: {
         region: { select: { id: true, name: true } },
-        district: { select: { id: true, name: true } },
+        districts: { select: { id: true, name: true } },
       },
       orderBy: { name: "asc" },
     });
@@ -240,12 +246,23 @@ const createCommune = async (req, res, next) => {
 
     if (isRegional(req.user)) {
       regionId = req.user.regionId;
-    } else if (!isNational(req.user)) {
+    } else if (!isNational(req.user) && req.user.role !== "SUPERADMIN") {
       return res.status(403).json({ message: "Accès refusé" });
     }
 
     if (!regionId || !req.body.name?.trim()) {
       return res.status(400).json({ message: "Nom et région requis" });
+    }
+
+    // Pour SUPERADMIN, vérifier que la région existe
+    if (req.user.role === "SUPERADMIN") {
+      const region = await prisma.region.findUnique({
+        where: { id: regionId },
+        select: { id: true },
+      });
+      if (!region) {
+        return res.status(400).json({ message: "Région introuvable" });
+      }
     }
 
     const commune = await prisma.commune.create({

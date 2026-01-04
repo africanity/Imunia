@@ -153,7 +153,6 @@ const findAllValidAppointments = async () => {
           id: true,
           firstName: true,
           lastName: true,
-          emailParent: true,
           phoneParent: true,
           healthCenter: {
             select: {
@@ -184,7 +183,6 @@ const findAllValidAppointments = async () => {
       id: true,
       firstName: true,
       lastName: true,
-      emailParent: true,
       phoneParent: true,
       nextAppointment: true,
       healthCenter: {
@@ -220,7 +218,6 @@ const findAllValidAppointments = async () => {
         id: child.id,
         firstName: child.firstName,
         lastName: child.lastName,
-        emailParent: child.emailParent,
         phoneParent: child.phoneParent,
         healthCenter: child.healthCenter,
       },
@@ -362,7 +359,7 @@ const sendAppointmentNotification = async (appointment) => {
     return { success: false, reason: "already_sent" };
   }
 
-  if (!child.emailParent && !child.phoneParent) {
+  if (!child.phoneParent) {
     console.warn(
       `Aucun contact pour l'enfant ${child.firstName} ${child.lastName}`
     );
@@ -414,32 +411,6 @@ const sendAppointmentNotification = async (appointment) => {
     }
   }
 
-  // Si WhatsApp échoue ou n'est pas disponible, essayer Email
-  if (!success && child.emailParent) {
-    try {
-      console.log(`      📧 Tentative envoi Email à ${child.emailParent}...`);
-      const emailResult = await sendAppointmentReminderEmail({
-        email: child.emailParent,
-        childName,
-        vaccineName,
-        appointmentDate: formattedDate,
-        healthCenterName,
-        notificationType,
-      });
-
-      if (emailResult.success) {
-        sentVia = success ? "BOTH" : "EMAIL";
-        success = true;
-        console.log(`      ✅ Email envoyé avec succès`);
-      } else {
-        console.log(`      ⚠️ Email échoué: ${emailResult.error || 'Erreur inconnue'}`);
-        errorMessage = errorMessage || emailResult.error || "Erreur Email";
-      }
-    } catch (error) {
-      console.error(`      ❌ Erreur envoi Email:`, error.message);
-      errorMessage = errorMessage || error.message;
-    }
-  }
 
   // Créer une notification mobile (toujours, même si WhatsApp/Email échoue)
   try {

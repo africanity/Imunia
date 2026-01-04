@@ -1,6 +1,6 @@
 // tests/unit/authController.test.js
 
-const { login, logout } = require('../../src/controllers/authController');
+const { login, logout, refreshToken } = require('../../src/controllers/authController');
 const prisma = require('../../src/config/prismaClient');
 const tokenService = require('../../src/services/tokenService');
 const bcrypt = require('bcryptjs');

@@ -50,6 +50,9 @@ router.put("/reduce-district", requireAuth, stockController.reduceStockDISTRICT)
 router.put("/reduce-health-center", requireAuth, stockController.reduceStockHEALTHCENTER);
 
 router.post("/national/lot/:id/reduce", requireAuth, stockController.reduceLotNATIONAL);
+router.post("/regional/lot/:id/reduce", requireAuth, stockController.reduceLotREGIONAL);
+router.post("/district/lot/:id/reduce", requireAuth, stockController.reduceLotDISTRICT);
+router.post("/health-center/lot/:id/reduce", requireAuth, stockController.reduceLotHEALTHCENTER);
 router.delete("/lots/:id", requireAuth, stockController.deleteLot);
 router.delete("/national", requireAuth, stockController.deleteStockNATIONAL);
 router.delete("/regional", requireAuth, stockController.deleteStockREGIONAL);
@@ -64,6 +67,10 @@ router.get("/stats/health-center", requireAuth, stockController.getHealthCenterS
 router.get("/health-center/reservations", requireAuth, stockController.getHealthCenterReservations);
 
 router.get("/pending-transfers", requireAuth, stockController.getPendingTransfers);
+router.get("/pending-transfers/sent", requireAuth, stockController.getPendingTransfersForSender);
 router.post("/pending-transfers/:transferId/confirm", requireAuth, stockController.confirmPendingTransfer);
+router.post("/pending-transfers/:transferId/reject", requireAuth, stockController.rejectPendingTransfer);
+router.post("/pending-transfers/:transferId/cancel", requireAuth, stockController.cancelPendingTransfer);
+router.get("/transfer-history", requireAuth, stockController.getTransferHistory);
 
 module.exports = router;

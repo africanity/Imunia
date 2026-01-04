@@ -1,4 +1,5 @@
 const twilio = require("twilio");
+const { getAppName } = require("../utils/appName");
 
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken = process.env.TWILIO_AUTH_TOKEN;
@@ -39,7 +40,7 @@ const normalizeWhatsAppNumber = (to) => {
   return phone;
 };
 
-const sendWhatsApp = async (to, message) => {
+const sendWhatsApp = async (to, message, maxRetries = 3) => {
   if (!twilioClient) {
     console.warn("⚠️ WhatsApp non configuré - message non envoyé");
     return {
@@ -49,33 +50,53 @@ const sendWhatsApp = async (to, message) => {
     };
   }
 
-  try {
-    const phone = normalizeWhatsAppNumber(to);
-    console.log(`📱 Envoi WhatsApp à ${phone}...`);
+  const phone = normalizeWhatsAppNumber(to);
+  let lastError = null;
 
-    const result = await twilioClient.messages.create({
-      from: whatsappFrom,
-      to: phone,
-      body: message,
-    });
+  // Tentative d'envoi avec retry
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      if (attempt > 1) {
+        console.log(`🔄 Nouvelle tentative (${attempt}/${maxRetries}) pour ${phone}...`);
+        // Attendre avant de réessayer : 2 secondes pour la 2ème tentative, 4 secondes pour la 3ème
+        await new Promise(resolve => setTimeout(resolve, 2000 * (attempt - 1)));
+      } else {
+        console.log(`📱 Envoi WhatsApp à ${phone}...`);
+      }
 
-    console.log(`✅ WhatsApp envoyé - SID: ${result.sid}`);
+      const result = await twilioClient.messages.create({
+        from: whatsappFrom,
+        to: phone,
+        body: message,
+      });
 
-    return {
-      success: true,
-      sid: result.sid,
-      status: result.status,
-      to: phone,
-    };
-  } catch (error) {
-    console.error("❌ Erreur envoi WhatsApp:", error.message);
-    return {
-      success: false,
-      error: error.message,
-      code: error.code,
-      moreInfo: error.moreInfo,
-    };
+      console.log(`✅ WhatsApp envoyé - SID: ${result.sid}${attempt > 1 ? ` (après ${attempt} tentative(s))` : ''}`);
+
+      return {
+        success: true,
+        sid: result.sid,
+        status: result.status,
+        to: phone,
+      };
+    } catch (error) {
+      lastError = error;
+      console.error(`❌ Erreur envoi WhatsApp (tentative ${attempt}/${maxRetries}):`, error.message);
+      
+      // Si ce n'est pas la dernière tentative, continuer la boucle
+      if (attempt < maxRetries) {
+        continue;
+      }
+    }
   }
+
+  // Toutes les tentatives ont échoué
+  console.error(`❌ Échec définitif après ${maxRetries} tentatives pour ${phone}`);
+  return {
+    success: false,
+    error: lastError?.message || "Erreur inconnue",
+    code: lastError?.code,
+    moreInfo: lastError?.moreInfo,
+  };
 };
 
 const sendAccessCodeWhatsApp = async (
@@ -84,21 +105,23 @@ const sendAccessCodeWhatsApp = async (
   childName,
   accessCode
 ) => {
-  const message = `👶 *Bienvenue sur Imunia !*
+  const appName = await getAppName();
+  const message = `👶 *Bienvenue sur ${appName} !*
 Bonjour ${parentName}, votre enfant *${childName}* a été enregistré.
 
 🔐 *Code d'accès :* ${accessCode}
 
-Utilisez ce code avec votre numéro de téléphone pour activer votre espace parent dans l'application Imunia.
+Utilisez ce code avec votre numéro de téléphone pour activer votre espace parent dans l'application ${appName}.
 
 💬 Besoin d'aide ? Répondez à ce message.
-_Imunia - Protéger la santé de nos enfants_`;
+_${appName} - Protéger la santé de nos enfants_`;
 
   return sendWhatsApp(to, message);
 };
 
 const sendVerificationCodeWhatsApp = async (to, parentName, verificationCode) => {
-  const message = `🔐 *Code de vérification Imunia*
+  const appName = await getAppName();
+  const message = `🔐 *Code de vérification ${appName}*
 
 Bonjour ${parentName},
 
@@ -106,10 +129,10 @@ Votre code de vérification est : *${verificationCode}*
 
 Ce code expire dans 10 minutes.
 
-Utilisez ce code pour finaliser votre inscription dans l'application Imunia.
+Utilisez ce code pour finaliser votre inscription dans l'application ${appName}.
 
 💬 Besoin d'aide ? Répondez à ce message.
-_Imunia - Protéger la santé de nos enfants_`;
+_${appName} - Protéger la santé de nos enfants_`;
 
   return sendWhatsApp(to, message);
 };
@@ -121,6 +144,7 @@ const sendVaccinationReminder = async (
   vaccineName,
   appointmentDate
 ) => {
+  const appName = await getAppName();
   const message = `👋 Bonjour ${parentName},
 
 📅 Rappel : vaccination de ${childName}
@@ -129,35 +153,37 @@ const sendVaccinationReminder = async (
 
 N'oubliez pas d'apporter le carnet !
 
-Imunia`;
+${appName}`;
 
   return sendWhatsApp(to, message);
 };
 
 const sendPhotoRequestWhatsApp = async (to, parentName, childName) => {
-  const message = `📸 *Demande de nouvelles photos - Imunia*
+  const appName = await getAppName();
+  const message = `📸 *Demande de nouvelles photos - ${appName}*
 
 Bonjour ${parentName},
 
 Nous avons besoin de photos plus claires du carnet de vaccination de *${childName}*.
 
-Veuillez vous connecter à l'application Imunia et télécharger de nouvelles photos pour continuer à utiliser l'application.
+Veuillez vous connecter à l'application ${appName} et télécharger de nouvelles photos pour continuer à utiliser l'application.
 
 💬 Besoin d'aide ? Répondez à ce message.
-_Imunia - Protéger la santé de nos enfants_`;
+_${appName} - Protéger la santé de nos enfants_`;
 
   return sendWhatsApp(to, message);
 };
 
 const sendAccountActivationWhatsApp = async (to, parentName, childName) => {
-  const message = `✅ *Compte activé - Imunia*
+  const appName = await getAppName();
+  const message = `✅ *Compte activé - ${appName}*
 
 Bonjour ${parentName},
 
-Le compte de *${childName}* a été activé avec succès. Vous pouvez maintenant utiliser toutes les fonctionnalités de l'application Imunia.
+Le compte de *${childName}* a été activé avec succès. Vous pouvez maintenant utiliser toutes les fonctionnalités de l'application ${appName}.
 
 💬 Besoin d'aide ? Répondez à ce message.
-_Imunia - Protéger la santé de nos enfants_`;
+_${appName} - Protéger la santé de nos enfants_`;
 
   return sendWhatsApp(to, message);
 };

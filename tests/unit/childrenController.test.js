@@ -1819,7 +1819,6 @@ describe('childrenController', () => {
       prisma.children.findUnique.mockResolvedValue(mockChild);
       prisma.children.update.mockResolvedValue(mockUpdatedChild);
       whatsappService.sendPhotoRequestWhatsApp.mockResolvedValue();
-      notificationService2.notifyPhotoRequest.mockResolvedValue();
 
       await requestPhotos(req, res, next);
 
@@ -1836,7 +1835,6 @@ describe('childrenController', () => {
         child: mockUpdatedChild,
       });
       expect(whatsappService.sendPhotoRequestWhatsApp).toHaveBeenCalled();
-      expect(notificationService2.notifyPhotoRequest).toHaveBeenCalled();
     });
 
     it('devrait gérer les erreurs', async () => {

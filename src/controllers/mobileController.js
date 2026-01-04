@@ -15,7 +15,6 @@ const requestVerificationCode = async (req, res, next) => {
   try {
     const {
       parentPhone,
-      parentEmail,
       childFirstName,
       childLastName,
       childBirthDate,
@@ -82,7 +81,6 @@ const requestVerificationCode = async (req, res, next) => {
         gender: childGender.toUpperCase(),
         healthCenterId: healthCenter.id,
         status: "A_JOUR",
-        emailParent: parentEmail || "",
         phoneParent: parentPhone,
         fatherName: fatherName,
         motherName: motherName,
@@ -108,6 +106,78 @@ const requestVerificationCode = async (req, res, next) => {
       console.error("Erreur envoi code vérification WhatsApp:", whatsappError);
       // Ne pas bloquer la réponse si WhatsApp échoue
     }
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/mobile/resend-verification-code
+ * Renvoie un nouveau code de vérification pour une inscription en attente
+ */
+const resendVerificationCode = async (req, res, next) => {
+  try {
+    const { registrationId } = req.body;
+
+    if (!registrationId) {
+      return res.status(400).json({
+        success: false,
+        message: "registrationId requis",
+      });
+    }
+
+    // Récupérer l'enfant en attente de vérification
+    const child = await prisma.children.findUnique({
+      where: { id: registrationId },
+      select: {
+        id: true,
+        code: true,
+        phoneParent: true,
+        fatherName: true,
+        motherName: true,
+      },
+    });
+
+    if (!child || !child.code || !child.code.startsWith("VERIFY_")) {
+      return res.status(404).json({
+        success: false,
+        message: "Inscription introuvable ou expirée",
+      });
+    }
+
+    // Générer un nouveau code de vérification à 6 chiffres
+    const verificationCode = generateAccessCode(6);
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    // Mettre à jour le code de vérification
+    await prisma.children.update({
+      where: { id: registrationId },
+      data: {
+        code: `VERIFY_${verificationCode}_${expiresAt.getTime()}`,
+      },
+    });
+
+    // Envoyer le code par WhatsApp (de manière asynchrone, après la réponse)
+    setImmediate(async () => {
+      try {
+        const result = await sendVerificationCode({
+          to: child.phoneParent,
+          parentName: child.fatherName || child.motherName || "Parent",
+          verificationCode,
+        });
+        if (!result.success) {
+          console.error("Erreur envoi code vérification WhatsApp:", result.error);
+        }
+      } catch (whatsappError) {
+        console.error("Erreur envoi code vérification WhatsApp:", whatsappError);
+        // Ne pas bloquer la réponse si WhatsApp échoue
+      }
+    });
+
+    res.json({
+      success: true,
+      message: "Nouveau code de vérification envoyé par WhatsApp",
+    });
   } catch (error) {
     next(error);
   }
@@ -2231,6 +2301,7 @@ const changeParentPin = async (req, res, next) => {
 
 module.exports = {
   requestVerificationCode,
+  resendVerificationCode,
   parentRegister,
   verifyAccessCode,
   parentLogin,

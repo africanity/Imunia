@@ -459,7 +459,7 @@ describe('reportController', () => {
   });
 
   describe('getNationalReports', () => {
-    it('devrait retourner 403 si utilisateur n\'est pas NATIONAL', async () => {
+    it('devrait retourner 403 si utilisateur n\'est pas NATIONAL ou SUPERADMIN', async () => {
       req.user.role = 'REGIONAL';
 
       await getNationalReports(req, res, next);
@@ -470,7 +470,7 @@ describe('reportController', () => {
       });
     });
 
-    it('devrait retourner les rapports nationaux avec succès', async () => {
+    it('devrait retourner les rapports nationaux avec succès (NATIONAL)', async () => {
       req.user.role = 'NATIONAL';
       req.query = { period: '6months' };
 
@@ -494,15 +494,6 @@ describe('reportController', () => {
         {
           id: 'region-1',
           name: 'Region 1',
-          communes: [
-            {
-              district: {
-                healthCenters: [
-                  { childrens: [] },
-                ],
-              },
-            },
-          ],
         },
       ];
 
@@ -511,6 +502,7 @@ describe('reportController', () => {
       prisma.region.count.mockResolvedValue(5);
       prisma.healthCenter.count.mockResolvedValue(50);
       prisma.childVaccineDue.count.mockResolvedValue(200);
+      prisma.childVaccineLate.count.mockResolvedValue(100);
       prisma.campaign.count.mockResolvedValue(3);
       prisma.stockNATIONAL.count.mockResolvedValue(2);
       prisma.childVaccineCompleted.findMany.mockResolvedValue(mockVaccinations);
@@ -518,6 +510,9 @@ describe('reportController', () => {
       prisma.vaccine.findUnique.mockResolvedValue(mockVaccine);
       prisma.region.findMany.mockResolvedValue(mockRegions);
       prisma.children.findMany.mockResolvedValue([]);
+      prisma.childVaccineCompleted.count.mockResolvedValueOnce(5000).mockResolvedValueOnce(0);
+      prisma.childVaccineDue.count.mockResolvedValueOnce(200).mockResolvedValueOnce(0);
+      prisma.childVaccineLate.count.mockResolvedValueOnce(100).mockResolvedValueOnce(0);
 
       await getNationalReports(req, res, next);
 
@@ -543,6 +538,55 @@ describe('reportController', () => {
         top5BestRegions: expect.any(Array),
         top5WorstRegions: expect.any(Array),
       });
+    });
+
+    it('devrait permettre à SUPERADMIN d\'accéder aux rapports nationaux', async () => {
+      req.user.role = 'SUPERADMIN';
+      req.query = { period: '6months' };
+
+      const mockVaccinations = [
+        { administeredAt: new Date('2024-01-15') },
+      ];
+
+      const mockVaccineStats = [
+        {
+          vaccineId: 'vac-1',
+          _count: { id: 100 },
+        },
+      ];
+
+      const mockVaccine = {
+        id: 'vac-1',
+        name: 'Vaccin 1',
+      };
+
+      const mockRegions = [
+        {
+          id: 'region-1',
+          name: 'Region 1',
+        },
+      ];
+
+      prisma.children.count.mockResolvedValue(1000);
+      prisma.childVaccineCompleted.count.mockResolvedValue(5000);
+      prisma.region.count.mockResolvedValue(5);
+      prisma.healthCenter.count.mockResolvedValue(50);
+      prisma.childVaccineDue.count.mockResolvedValue(200);
+      prisma.childVaccineLate.count.mockResolvedValue(100);
+      prisma.campaign.count.mockResolvedValue(3);
+      prisma.stockNATIONAL.count.mockResolvedValue(2);
+      prisma.childVaccineCompleted.findMany.mockResolvedValue(mockVaccinations);
+      prisma.childVaccineCompleted.groupBy.mockResolvedValue(mockVaccineStats);
+      prisma.vaccine.findUnique.mockResolvedValue(mockVaccine);
+      prisma.region.findMany.mockResolvedValue(mockRegions);
+      prisma.children.findMany.mockResolvedValue([]);
+      prisma.childVaccineCompleted.count.mockResolvedValueOnce(5000).mockResolvedValueOnce(0);
+      prisma.childVaccineDue.count.mockResolvedValueOnce(200).mockResolvedValueOnce(0);
+      prisma.childVaccineLate.count.mockResolvedValueOnce(100).mockResolvedValueOnce(0);
+
+      await getNationalReports(req, res, next);
+
+      expect(res.json).toHaveBeenCalled();
     });
 
     it('devrait gérer les erreurs', async () => {
@@ -769,12 +813,9 @@ describe('reportController', () => {
 
       expect(prisma.region.findFirst).toHaveBeenCalledWith({
         where: { name: 'Region 1' },
-        include: {
-          communes: {
-            include: {
-              district: true,
-            },
-          },
+        select: {
+          id: true,
+          name: true,
         },
       });
       expect(res.json).toHaveBeenCalledWith({
@@ -1130,7 +1171,6 @@ describe('reportController', () => {
             agentId: 'agent-1',
             agentName: 'Jean Dupont',
             agentEmail: 'jean@test.com',
-            agentPhone: '123456789',
             agentLevel: 'ADMIN',
             active: true,
             vaccinations: 40,

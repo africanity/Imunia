@@ -56,6 +56,9 @@ app.use(prismaMiddleware);
 
 // Servir les fichiers statiques depuis le dossier uploads
 const path = require("path");
+// Servir d'abord depuis frontend/public/uploads (pour les logos du superadmin)
+app.use("/uploads", express.static(path.join(__dirname, "../frontend/public/uploads")));
+// Puis depuis uploads à la racine (pour les autres fichiers)
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
 app.get("/", (_req, res) => {

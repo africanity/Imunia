@@ -11,7 +11,7 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "test:integration": "cross-env NODE_ENV=test jest --config jest.integration.config.js --runInBand"
+    "test:integration": "jest --config=jest.integration.config.js"
   },
   "keywords": [],
   "author": "",
@@ -34,7 +34,6 @@
   },
   "devDependencies": {
     "@jest/globals": "^30.2.0",
-    "cross-env": "^10.1.0",
     "dotenv-cli": "^11.0.0",
     "jest": "^30.2.0",
     "nodemon": "^3.1.11",

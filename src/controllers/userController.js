@@ -1,7 +1,8 @@
 const bcrypt = require("bcryptjs");
 const prisma = require("../config/prismaClient");
 const tokenService = require("../services/tokenService");
-const { sendInvitationEmail, sendTwoFactorCode } = require("../services/emailService");
+const { sendInvitationEmail, sendTwoFactorCode, sendPasswordResetCode } = require("../services/emailService");
+const { logEventAsync } = require("../services/eventLogService");
 
 const SALT_ROUNDS = 10;
 
@@ -26,14 +27,6 @@ const respondIfUniqueConstraint = (error, res, defaultMessage) => {
   ) {
     message = "Cet email est déjà utilisé. Veuillez utiliser un autre email.";
   }
-  // Vérifier si c'est le téléphone
-  else if (
-    metaField === "phone" ||
-    (Array.isArray(target) && target.includes("phone")) ||
-    (typeof constraintName === "string" && constraintName.toLowerCase().includes("phone"))
-  ) {
-    message = "Ce numéro de téléphone est déjà utilisé. Veuillez utiliser un autre numéro.";
-  }
   // Vérifier si c'est le code
   else if (
     metaField === "code" ||
@@ -53,8 +46,6 @@ const respondIfUniqueConstraint = (error, res, defaultMessage) => {
   // Vérifier les contraintes composites
   else if (constraintName === "User_email_role_key") {
     message = "Cet email est déjà utilisé pour ce rôle.";
-  } else if (constraintName === "User_phone_role_key") {
-    message = "Ce numéro de téléphone est déjà utilisé pour ce rôle.";
   }
   // Essayer d'extraire le nom du champ depuis le nom de la contrainte
   else if (typeof constraintName === "string") {
@@ -67,7 +58,6 @@ const respondIfUniqueConstraint = (error, res, defaultMessage) => {
       const fieldCandidate = parts[parts.length - 2] || parts[parts.length - 1];
       const fieldLabels = {
         email: "email",
-        phone: "numéro de téléphone",
         code: "code",
         name: "nom",
         communeid: "commune",
@@ -85,7 +75,6 @@ const respondIfUniqueConstraint = (error, res, defaultMessage) => {
   else if (Array.isArray(target) && target.length === 1) {
     const fieldLabels = {
       email: "email",
-      phone: "numéro de téléphone",
       code: "code",
       name: "nom",
       communeid: "commune",
@@ -102,7 +91,6 @@ const respondIfUniqueConstraint = (error, res, defaultMessage) => {
   else if (metaField) {
     const fieldLabels = {
       email: "email",
-      phone: "numéro de téléphone",
       code: "code",
       name: "nom",
       communeid: "commune",
@@ -210,7 +198,6 @@ const createUser = async (req, res, next) => {
         firstName: data.firstName,
         lastName: data.lastName,
         email: data.email,
-        phone: data.phone,
         code: data.code,
         role: data.role,
         regionId: data.regionId,
@@ -260,7 +247,7 @@ const createRegional = async (req, res, next) => {
     return res.status(403).json({ message: "Accès refusé" });
   }  
 
-    if (!req.body.regionId || !req.body.firstName || !req.body.lastName || !req.body.email || !req.body.phone ) {
+    if (!req.body.regionId || !req.body.firstName || !req.body.lastName || !req.body.email) {
       return res.status(400).json({ message: "Remplir les champs obligatoires pour ce rôle." });
     }
 
@@ -271,7 +258,6 @@ const createRegional = async (req, res, next) => {
         firstName: req.body.firstName,
         lastName: req.body.lastName,
         email: req.body.email,
-        phone: req.body.phone,
         role: "REGIONAL",
         regionId: req.body.regionId,
         isActive: false,
@@ -329,9 +315,9 @@ const createDistricit = async (req, res, next) => {
       return res.status(403).json({ message: "Accès refusé" });
     }
 
-    const { firstName, lastName, email, phone, districtId } = req.body ?? {};
+    const { firstName, lastName, email, districtId } = req.body ?? {};
 
-    if (!firstName?.trim() || !lastName?.trim() || !email?.trim() || !phone?.trim() || !districtId) {
+    if (!firstName?.trim() || !lastName?.trim() || !email?.trim() || !districtId) {
       return res.status(400).json({ message: "Remplir les champs obligatoires pour ce rôle." });
     }
 
@@ -361,7 +347,6 @@ const createDistricit = async (req, res, next) => {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         email: email.trim(),
-        phone: phone.trim(),
         role: "DISTRICT",
         regionId: req.user.regionId,
         districtId,
@@ -411,9 +396,9 @@ const createAgentAdmin = async (req, res, next) => {
       return res.status(403).json({ message: "Accès refusé" });
     }
 
-    const { firstName, lastName, email, phone, healthCenterId } = req.body ?? {};
+    const { firstName, lastName, email, healthCenterId } = req.body ?? {};
 
-    if (!firstName?.trim() || !lastName?.trim() || !email?.trim() || !phone?.trim() || !healthCenterId) {
+    if (!firstName?.trim() || !lastName?.trim() || !email?.trim() || !healthCenterId) {
       return res.status(400).json({ message: "Remplir les champs obligatoires pour ce rôle." });
     }
 
@@ -437,7 +422,6 @@ const createAgentAdmin = async (req, res, next) => {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         email: email.trim(),
-        phone: phone.trim(),
         role: "AGENT",
         agentLevel: "ADMIN",
         districtId: req.user.districtId,
@@ -487,9 +471,9 @@ const createAgentStaff = async (req, res, next) => {
       return res.status(403).json({ message: "Accès refusé" });
     }
 
-    const { firstName, lastName, email, phone, code, healthCenterId } = req.body ?? {};
+    const { firstName, lastName, email, code, healthCenterId } = req.body ?? {};
 
-    if (!firstName?.trim() || !lastName?.trim() || !email?.trim() || !phone?.trim() || !healthCenterId) {
+    if (!firstName?.trim() || !lastName?.trim() || !email?.trim() || !healthCenterId) {
       return res.status(400).json({ message: "Remplir les champs obligatoires pour ce rôle." });
     }
 
@@ -504,7 +488,6 @@ const createAgentStaff = async (req, res, next) => {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         email: email.trim(),
-        phone: phone.trim(),
         code: code?.trim() ?? null,
         role: "AGENT",
         healthCenterId,
@@ -553,8 +536,12 @@ const activateUser = async (req, res, next) => {
 
     const user = await prisma.user.findUnique({ where: { id } });
 
-    if (!user || user.isActive) {
-      return res.status(400).json({ message: "Activation invalide." });
+    if (!user) {
+      return res.status(400).json({ message: "Utilisateur non trouvé." });
+    }
+
+    if (user.isActive) {
+      return res.status(400).json({ message: "Ce compte est déjà actif." });
     }
 
     if (!user.activationToken || user.activationToken !== token) {
@@ -567,13 +554,35 @@ const activateUser = async (req, res, next) => {
 
     const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
 
-    await prisma.user.update({
-      where: { id },
-      data: {
-        password: hashedPassword,
-        isActive: true,
-        activationToken: null,
-        activationExpires: null,
+      await prisma.user.update({
+        where: { id },
+        data: {
+          password: hashedPassword,
+          isActive: true,
+          emailVerified: true,
+          activationToken: null,
+          activationExpires: null,
+        },
+      });
+
+    // Enregistrer l'événement
+    logEventAsync({
+      type: "USER",
+      subtype: user.role,
+      action: "ACTIVATE",
+      user: {
+        id: user.id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        role: user.role,
+      },
+      entityType: "USER",
+      entityId: id,
+      entityName: `${user.firstName} ${user.lastName}`,
+      details: {
+        email: user.email,
+        role: user.role,
       },
     });
 
@@ -653,7 +662,6 @@ const listUsers = async (req, res, next) => {
         role: true,
         firstName: true,
         lastName: true,
-        phone: true,
         regionId: true,
         districtId: true,
         healthCenterId: true,
@@ -692,7 +700,6 @@ const getHealthCenterAgents = async (req, res, next) => {
         firstName: true,
         lastName: true,
         email: true,
-        phone: true,
         agentLevel: true,
       },
     });
@@ -776,6 +783,289 @@ const verifyEmail = async (req, res, next) => {
     });
 
     res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/users/me/request-email-change — demande de changement d'email (envoi du code au nouvel email)
+ */
+const requestEmailChange = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const { newEmail } = req.body;
+
+    if (!newEmail?.trim()) {
+      return res.status(400).json({ message: "Nouvel email requis." });
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+
+    if (!user) {
+      return res.status(404).json({ message: "Utilisateur introuvable." });
+    }
+
+    if (newEmail.trim().toLowerCase() === user.email.toLowerCase()) {
+      return res.status(400).json({ message: "Le nouvel email doit être différent de l'email actuel." });
+    }
+
+    // Vérifier si le nouvel email est déjà utilisé
+    const existingUser = await prisma.user.findUnique({
+      where: { email: newEmail.trim().toLowerCase() },
+    });
+
+    if (existingUser) {
+      return res.status(400).json({ message: "Cet email est déjà utilisé." });
+    }
+
+    // Générer un code à 6 chiffres
+    const { code, expiresAt } = tokenService.generateEmailCode();
+
+    // Sauvegarder le code et le nouvel email en attente
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        pendingEmail: newEmail.trim().toLowerCase(),
+        emailVerificationCode: code,
+        emailVerificationExpiry: expiresAt,
+        emailVerified: false,
+      },
+    });
+
+    // Envoyer le code au nouvel email
+    try {
+      await sendTwoFactorCode({
+        email: newEmail.trim().toLowerCase(),
+        code,
+      });
+    } catch (emailError) {
+      console.error("Erreur envoi email code:", emailError);
+      // Ne pas bloquer si l'email échoue
+    }
+
+    res.json({
+      message: "Code de vérification envoyé au nouvel email.",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/users/me/verify-email-change — vérification du code et changement d'email
+ */
+const verifyEmailChange = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const { code, newEmail } = req.body;
+
+    if (!code?.trim() || !newEmail?.trim()) {
+      return res.status(400).json({ message: "Code et nouvel email requis." });
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+
+    if (!user) {
+      return res.status(404).json({ message: "Utilisateur introuvable." });
+    }
+
+    // Vérifier le code et l'email en attente
+    const isValid =
+      user.pendingEmail &&
+      user.pendingEmail.toLowerCase() === newEmail.trim().toLowerCase() &&
+      user.emailVerificationCode &&
+      user.emailVerificationCode === code.trim() &&
+      user.emailVerificationExpiry &&
+      user.emailVerificationExpiry > new Date();
+
+    if (!isValid) {
+      return res.status(400).json({ message: "Code de vérification invalide ou expiré." });
+    }
+
+    // Mettre à jour l'email
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        email: user.pendingEmail,
+        pendingEmail: null,
+        emailVerificationCode: null,
+        emailVerificationExpiry: null,
+        emailVerified: true,
+      },
+    });
+
+    res.json({
+      message: "Email modifié avec succès.",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/users/me/request-password-change — demande de changement de mot de passe (envoi du code à l'email actuel)
+ */
+const requestPasswordChange = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, firstName: true },
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: "Utilisateur introuvable." });
+    }
+
+    // Générer un code à 6 chiffres
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiryDate = new Date();
+    expiryDate.setMinutes(expiryDate.getMinutes() + 10); // 10 minutes
+
+    // Sauvegarder le code
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        code,
+        passwordResetCodeExpiry: expiryDate,
+        passwordResetAttempts: 0,
+      },
+    });
+
+    // Envoyer le code à l'email actuel
+    try {
+      await sendPasswordResetCode({
+        email: user.email,
+        code,
+        firstName: user.firstName,
+      });
+    } catch (emailError) {
+      console.error("Erreur envoi email code:", emailError);
+      // Ne pas bloquer si l'email échoue
+    }
+
+    res.json({
+      message: "Code de vérification envoyé à votre email.",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/users/me/verify-password-code — vérification du code pour changement de mot de passe
+ */
+const verifyPasswordCode = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const { code } = req.body;
+
+    if (!code?.trim()) {
+      return res.status(400).json({ message: "Code requis." });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        code: true,
+        passwordResetCodeExpiry: true,
+        passwordResetAttempts: true,
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: "Utilisateur introuvable." });
+    }
+
+    // Vérifier si le code a expiré
+    if (!user.passwordResetCodeExpiry || new Date() > user.passwordResetCodeExpiry) {
+      return res.status(400).json({
+        message: "Le code a expiré. Veuillez demander un nouveau code.",
+        expired: true,
+      });
+    }
+
+    // Vérifier le nombre de tentatives
+    if (user.passwordResetAttempts >= 3) {
+      return res.status(400).json({
+        message: "Nombre maximum de tentatives atteint. Veuillez demander un nouveau code.",
+        maxAttemptsReached: true,
+      });
+    }
+
+    // Vérifier le code
+    if (user.code !== code.trim()) {
+      // Incrémenter les tentatives
+      await prisma.user.update({
+        where: { id: userId },
+        data: {
+          passwordResetAttempts: user.passwordResetAttempts + 1,
+        },
+      });
+
+      const remainingAttempts = 3 - (user.passwordResetAttempts + 1);
+      return res.status(400).json({
+        message: `Code incorrect. Il vous reste ${remainingAttempts} tentative${remainingAttempts > 1 ? "s" : ""}.`,
+        remainingAttempts,
+      });
+    }
+
+    // Code correct, générer un token temporaire pour la mise à jour du mot de passe
+    const resetToken = tokenService.generatePasswordResetToken(userId);
+
+    res.json({
+      message: "Code vérifié avec succès.",
+      resetToken,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/users/me/change-password — changement de mot de passe après vérification
+ */
+const changePassword = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const { newPassword, resetToken } = req.body;
+
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({ message: "Le mot de passe doit contenir au moins 6 caractères." });
+    }
+
+    // Si un token est fourni, le vérifier
+    if (resetToken) {
+      try {
+        const decoded = tokenService.verifyPasswordResetToken(resetToken);
+        if (decoded.userId !== userId) {
+          return res.status(403).json({ message: "Token invalide." });
+        }
+      } catch (tokenError) {
+        return res.status(400).json({ message: "Token invalide ou expiré." });
+      }
+    }
+
+    // Hasher le nouveau mot de passe
+    const hashedPassword = await bcrypt.hash(newPassword, SALT_ROUNDS);
+
+    // Mettre à jour le mot de passe
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        password: hashedPassword,
+        code: null,
+        passwordResetCodeExpiry: null,
+        passwordResetAttempts: 0,
+      },
+    });
+
+    res.json({
+      message: "Mot de passe modifié avec succès.",
+    });
   } catch (error) {
     next(error);
   }
@@ -1380,6 +1670,11 @@ module.exports = {
   getHealthCenterAgents,
   updateSelf,
   verifyEmail,
+  requestEmailChange,
+  verifyEmailChange,
+  requestPasswordChange,
+  verifyPasswordCode,
+  changePassword,
   getUserDeletionSummary,
   deleteUser,
   createRegional,
