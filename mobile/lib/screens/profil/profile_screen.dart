@@ -7,6 +7,8 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_card.dart';
 import '../../core/widgets/section_header.dart';
 import '../../services/api_service.dart';
+import '../../services/settings_service.dart';
+import '../../models/system_settings.dart';
 import '../onboarding/onboarding_screen.dart';
 import 'children_selector_screen.dart';
 import 'change_pin_screen.dart';
@@ -27,13 +29,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _isLoading = false;
   Map<String, dynamic> _childData = {};
   int _totalChildren = 0;
+  SystemSettings? _settings;
   
   @override
   void initState() {
     super.initState();
     _childData = Map.from(widget.child);
+    _loadSettings();
     _loadChildData();
     _checkTotalChildren();
+  }
+
+  Future<void> _loadSettings() async {
+    try {
+      final settings = await SettingsService.getSystemSettings();
+      if (mounted) {
+        setState(() {
+          _settings = settings;
+        });
+      }
+    } catch (e) {
+      // Ignore errors, use default
+    }
   }
   
   Future<void> _loadChildData() async {
@@ -185,7 +202,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Imunia',
+              _settings?.appName ?? 'Imunia',
               style: GoogleFonts.poppins(
                 fontSize: 20,
                 fontWeight: FontWeight.w700,
@@ -504,7 +521,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             
             // Version
             Text(
-              'Imunia v1.0.0',
+              '${_settings?.appName ?? "Imunia"} v1.0.0',
               style: AppTextStyles.caption,
             ),
             

@@ -216,24 +216,25 @@ describe('districtController', () => {
       expect(res.json).toHaveBeenCalledWith({ message: 'Nom et commune requis' });
     });
 
-    it('devrait retourner 400 si la commune a déjà un district', async () => {
+    it('devrait permettre de créer plusieurs districts pour la même commune', async () => {
       req.body.name = 'District Test';
       req.body.communeId = 'commune-1';
+      const mockDistrict = {
+        id: 'district-1',
+        name: 'District Test',
+        communeId: 'commune-1',
+        commune: { id: 'commune-1', name: 'Commune 1', region: { id: 'region-1', name: 'Region 1' } },
+      };
       prisma.commune.findUnique.mockResolvedValue({ regionId: 'region-1' });
-      prisma.district.findUnique.mockResolvedValue({
-        id: 'district-existing',
-        name: 'District Existant',
-        commune: { name: 'Commune 1' },
-      });
+      // Le contrôleur ne vérifie plus si un district existe déjà pour cette commune
+      prisma.district.create.mockResolvedValue(mockDistrict);
 
       await createDistrict(req, res, next);
 
-      expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.json).toHaveBeenCalledWith(
-        expect.objectContaining({
-          message: expect.stringContaining('a déjà un district associé'),
-        }),
-      );
+      // La création doit réussir même si d'autres districts existent déjà pour cette commune
+      expect(prisma.district.create).toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(201);
+      expect(res.json).toHaveBeenCalledWith(mockDistrict);
     });
 
     it('devrait créer un district avec succès', async () => {
@@ -243,10 +244,10 @@ describe('districtController', () => {
         id: 'district-1',
         name: 'District Test',
         communeId: 'commune-1',
-        commune: { id: 'commune-1', name: 'Commune 1' },
+        commune: { id: 'commune-1', name: 'Commune 1', region: { id: 'region-1', name: 'Region 1' } },
       };
       prisma.commune.findUnique.mockResolvedValue({ regionId: 'region-1' });
-      prisma.district.findUnique.mockResolvedValue(null);
+      // Le contrôleur ne vérifie plus si un district existe déjà
       prisma.district.create.mockResolvedValue(mockDistrict);
 
       await createDistrict(req, res, next);
@@ -261,7 +262,7 @@ describe('districtController', () => {
       req.body.communeId = 'commune-1';
       const error = new Error('Erreur base de données');
       prisma.commune.findUnique.mockResolvedValue({ regionId: 'region-1' });
-      prisma.district.findUnique.mockResolvedValue(null);
+      // Le contrôleur ne vérifie plus si un district existe déjà
       prisma.district.create.mockRejectedValue(error);
 
       await createDistrict(req, res, next);

@@ -22,7 +22,6 @@ class _ParentRegistrationScreenState extends State<ParentRegistrationScreen> {
 
   // Contrôleurs parent
   final _parentPhoneController = TextEditingController();
-  final _parentEmailController = TextEditingController();
   final _fatherNameController = TextEditingController();
   final _motherNameController = TextEditingController();
 
@@ -56,7 +55,6 @@ class _ParentRegistrationScreenState extends State<ParentRegistrationScreen> {
   @override
   void dispose() {
     _parentPhoneController.dispose();
-    _parentEmailController.dispose();
     _fatherNameController.dispose();
     _motherNameController.dispose();
     _childFirstNameController.dispose();
@@ -164,78 +162,73 @@ class _ParentRegistrationScreenState extends State<ParentRegistrationScreen> {
     });
 
     try {
-      // Étape 1: Demander un code de vérification
-      if (_registrationId == null) {
-        final requestUrl = Uri.parse("${ApiConfig.apiBaseUrl}/mobile/request-verification-code");
-        final requestResponse = await http.post(
-          requestUrl,
-          headers: {"Content-Type": "application/json"},
-          body: jsonEncode({
-            // Informations parent
-            "parentPhone": _parentPhoneController.text.trim(),
-            "parentEmail": _parentEmailController.text.trim().isEmpty
-                ? null
-                : _parentEmailController.text.trim(),
-            
-            // Informations enfant
-            "childFirstName": _childFirstNameController.text.trim(),
-            "childLastName": _childLastNameController.text.trim(),
-            "childBirthDate": _childBirthDate!.toIso8601String(),
-            "childGender": _childGender,
-            "birthPlace": _birthPlaceController.text.trim(),
-            
-            // Informations parents
-            "fatherName": _fatherNameController.text.trim(),
-            "motherName": _motherNameController.text.trim(),
-            
-            // Informations adresse
-            "address": _addressController.text.trim(),
-            
-            // HealthCenter (peut être null si aucune région sélectionnée)
-            "healthCenterId": _selectedHealthCenterId,
-          }),
+      // Toujours régénérer le code (même si on revient en arrière)
+      final requestUrl = Uri.parse("${ApiConfig.apiBaseUrl}/mobile/request-verification-code");
+      final requestResponse = await http.post(
+        requestUrl,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          // Informations parent
+          "parentPhone": _parentPhoneController.text.trim(),
+          
+          // Informations enfant
+          "childFirstName": _childFirstNameController.text.trim(),
+          "childLastName": _childLastNameController.text.trim(),
+          "childBirthDate": _childBirthDate!.toIso8601String(),
+          "childGender": _childGender,
+          "birthPlace": _birthPlaceController.text.trim(),
+          
+          // Informations parents
+          "fatherName": _fatherNameController.text.trim(),
+          "motherName": _motherNameController.text.trim(),
+          
+          // Informations adresse
+          "address": _addressController.text.trim(),
+          
+          // HealthCenter (peut être null si aucune région sélectionnée)
+          "healthCenterId": _selectedHealthCenterId,
+        }),
+      );
+
+      final requestData = jsonDecode(requestResponse.body);
+
+      if (requestResponse.statusCode == 200 && requestData["success"] == true) {
+        // Code envoyé, afficher l'écran de vérification
+        _registrationId = requestData["registrationId"] as String;
+        if (!mounted) return;
+        
+        // Naviguer vers l'écran de vérification du code
+        final verificationResult = await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => VerificationCodeScreen(
+              registrationId: _registrationId!,
+              parentPhone: _parentPhoneController.text.trim(),
+              parentName: _fatherNameController.text.trim().isNotEmpty 
+                  ? _fatherNameController.text.trim() 
+                  : (_motherNameController.text.trim().isNotEmpty 
+                      ? _motherNameController.text.trim() 
+                      : "Parent"),
+            ),
+          ),
         );
 
-        final requestData = jsonDecode(requestResponse.body);
-
-        if (requestResponse.statusCode == 200 && requestData["success"] == true) {
-          // Code envoyé, afficher l'écran de vérification
-          _registrationId = requestData["registrationId"] as String;
-          if (!mounted) return;
-          
-          // Naviguer vers l'écran de vérification du code
-          final verificationResult = await Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => VerificationCodeScreen(
-                registrationId: _registrationId!,
-                parentPhone: _parentPhoneController.text.trim(),
-                parentName: _fatherNameController.text.trim().isNotEmpty 
-                    ? _fatherNameController.text.trim() 
-                    : (_motherNameController.text.trim().isNotEmpty 
-                        ? _motherNameController.text.trim() 
-                        : "Parent"),
-              ),
-            ),
-          );
-
-          // Le compte est créé dans VerificationCodeScreen, on ne fait rien ici
-          if (verificationResult == true) {
-            // Le compte est créé, on reste sur cette page (la navigation est gérée dans VerificationCodeScreen)
-            if (mounted) {
-              Navigator.pop(context);
-            }
-          } else {
-            setState(() {
-              _isLoading = false;
-            });
+        // Le compte est créé dans VerificationCodeScreen, on ne fait rien ici
+        if (verificationResult == true) {
+          // Le compte est créé, on reste sur cette page (la navigation est gérée dans VerificationCodeScreen)
+          if (mounted) {
+            Navigator.pop(context);
           }
         } else {
           setState(() {
-            _error = requestData["message"] ?? "Erreur lors de l'envoi du code";
             _isLoading = false;
           });
         }
+      } else {
+        setState(() {
+          _error = requestData["message"] ?? "Erreur lors de l'envoi du code";
+          _isLoading = false;
+        });
       }
     } catch (e) {
       setState(() {
@@ -464,14 +457,6 @@ class _ParentRegistrationScreenState extends State<ParentRegistrationScreen> {
               }
               return null;
             },
-          ),
-          const SizedBox(height: 20),
-          _buildTextField(
-            controller: _parentEmailController,
-            label: "Email (optionnel)",
-            hint: "exemple@email.com",
-            icon: Icons.email_outlined,
-            keyboardType: TextInputType.emailAddress,
           ),
         ],
       ),

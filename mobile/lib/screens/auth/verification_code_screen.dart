@@ -24,12 +24,53 @@ class VerificationCodeScreen extends StatefulWidget {
 class _VerificationCodeScreenState extends State<VerificationCodeScreen> {
   final TextEditingController _codeController = TextEditingController();
   bool _isLoading = false;
+  bool _isResending = false;
   String? _error;
+  String? _successMessage;
 
   @override
   void dispose() {
     _codeController.dispose();
     super.dispose();
+  }
+
+  Future<void> _resendCode() async {
+    setState(() {
+      _isResending = true;
+      _error = null;
+      _successMessage = null;
+    });
+
+    try {
+      final url = Uri.parse("${ApiConfig.apiBaseUrl}/mobile/resend-verification-code");
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "registrationId": widget.registrationId,
+        }),
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200 && data["success"] == true) {
+        setState(() {
+          _successMessage = "Nouveau code envoyé avec succès";
+        });
+      } else {
+        setState(() {
+          _error = data["message"] ?? "Erreur lors du renvoi du code";
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _error = "Erreur de connexion au serveur";
+      });
+    } finally {
+      setState(() {
+        _isResending = false;
+      });
+    }
   }
 
   Future<void> _verifyCode() async {
@@ -251,6 +292,34 @@ class _VerificationCodeScreenState extends State<VerificationCodeScreen> {
                 ),
               ],
 
+              if (_successMessage != null) ...[
+                const SizedBox(height: 20),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF3B760F).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFF3B760F).withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.check_circle_outline,
+                          color: Color(0xFF3B760F), size: 20),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          _successMessage!,
+                          style: GoogleFonts.poppins(
+                            color: const Color(0xFF3B760F),
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+
               const SizedBox(height: 30),
 
               // Bouton de vérification
@@ -288,6 +357,30 @@ class _VerificationCodeScreenState extends State<VerificationCodeScreen> {
 
               const SizedBox(height: 20),
 
+              // Bouton renvoyer le code
+              TextButton(
+                onPressed: _isResending ? null : _resendCode,
+                child: _isResending
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Color(0xFF3B760F),
+                        ),
+                      )
+                    : Text(
+                        "Renvoyer le code",
+                        style: GoogleFonts.poppins(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: const Color(0xFF3B760F),
+                        ),
+                      ),
+              ),
+
+              const SizedBox(height: 10),
+
               // Aide
               Container(
                 padding: const EdgeInsets.all(16),
@@ -305,7 +398,7 @@ class _VerificationCodeScreenState extends State<VerificationCodeScreen> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        "Vous n'avez pas reçu le code ?\nVérifiez vos messages WhatsApp",
+                        "Vous n'avez pas reçu le code ?\nVérifiez vos messages WhatsApp ou cliquez sur 'Renvoyer le code'",
                         style: GoogleFonts.poppins(
                           fontSize: 13,
                           color: const Color(0xFF64748B),

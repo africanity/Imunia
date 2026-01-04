@@ -432,7 +432,7 @@ const getRegionalReports = async (req, res, next) => {
  * Rapports pour le niveau national
  */
 const getNationalReports = async (req, res, next) => {
-  if (req.user.role !== "NATIONAL") {
+  if (req.user.role !== "NATIONAL" && req.user.role !== "SUPERADMIN") {
     return res.status(403).json({ message: "Accès refusé" });
   }
 
@@ -503,21 +503,7 @@ const getNationalReports = async (req, res, next) => {
     
     // Region performance
     const regions = await prisma.region.findMany({
-      include: {
-        communes: {
-          include: {
-            district: {
-              include: {
-                healthCenters: {
-                  include: {
-                    childrens: true,
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
+      select: { id: true, name: true },
     });
     
     const regionPerformance = await Promise.all(
@@ -631,13 +617,7 @@ const getRegionDetails = async (req, res, next) => {
     
     const region = await prisma.region.findFirst({
       where: { name: regionName },
-      include: {
-        communes: {
-          include: {
-            district: true,
-          },
-        },
-      },
+      select: { id: true, name: true },
     });
     
     if (!region) {
@@ -1359,7 +1339,6 @@ const getHealthCenterDetails = async (req, res, next) => {
         firstName: true,
         lastName: true,
         email: true,
-        phone: true,
         agentLevel: true,
         isActive: true,
       },
@@ -1404,7 +1383,6 @@ const getHealthCenterDetails = async (req, res, next) => {
           agentId: agent.id,
           agentName: `${agent.firstName} ${agent.lastName}`,
           agentEmail: agent.email,
-          agentPhone: agent.phone,
           agentLevel: agent.agentLevel,
           active: agent.isActive,
           vaccinations,

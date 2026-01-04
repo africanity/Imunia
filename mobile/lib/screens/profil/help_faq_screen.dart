@@ -73,7 +73,7 @@ class _HelpFaqScreenState extends State<HelpFaqScreen> {
         ),
         FaqQuestion(
           question: 'Je reçois des rappels de rendez-vous ?',
-          answer: 'Oui, vous recevrez des notifications push quelques jours avant chaque rendez-vous. Assurez-vous d\'avoir activé les notifications dans les paramètres de votre téléphone pour l\'application Imunia.',
+          answer: 'Oui, vous recevrez des notifications push quelques jours avant chaque rendez-vous. Assurez-vous d\'avoir activé les notifications dans les paramètres de votre téléphone pour l\'application.',
         ),
         FaqQuestion(
           question: 'Que faire si j\'ai raté un rendez-vous ?',
@@ -87,7 +87,7 @@ class _HelpFaqScreenState extends State<HelpFaqScreen> {
       questions: [
         FaqQuestion(
           question: 'Je ne reçois pas de notifications',
-          answer: 'Vérifiez que les notifications sont activées dans les paramètres de votre téléphone pour l\'application Imunia. Les notifications sont envoyées pour les rendez-vous programmés, les vaccins manqués, les nouvelles campagnes et les conseils de santé.',
+          answer: 'Vérifiez que les notifications sont activées dans les paramètres de votre téléphone pour l\'application. Les notifications sont envoyées pour les rendez-vous programmés, les vaccins manqués, les nouvelles campagnes et les conseils de santé.',
         ),
         FaqQuestion(
           question: 'Quels types de notifications puis-je recevoir ?',

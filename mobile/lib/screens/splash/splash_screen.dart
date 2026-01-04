@@ -6,7 +6,9 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../services/auth_service.dart';
 import '../../services/settings_service.dart';
 import '../../models/system_settings.dart';
+import '../../core/config/api_config.dart';
 import '../onboarding/onboarding_screen.dart';
+import '../child/child_dashboard_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -71,29 +73,31 @@ class _SplashScreenState extends State<SplashScreen>
       final isLoggedIn = await AuthService.isLoggedIn();
       
       if (isLoggedIn) {
-        // Utilisateur connecté avec PIN → Aller à l'écran PIN
-        final userData = await AuthService.getUserData();
+        // Utilisateur connecté → Restaurer la session automatiquement
+        final sessionData = await AuthService.getSessionData();
         
-        if (userData != null) {
-          // TODO: Naviguer vers PinLoginScreen quand il sera créé
-          // Pour l'instant, on va à l'onboarding
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (_) => OnboardingScreen(settings: _settings),
-            ),
-          );
-        } else {
-          // Pas de données utilisateur, retour au login
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (_) => OnboardingScreen(settings: _settings),
-            ),
-          );
+        if (sessionData != null && sessionData['childId'] != null) {
+          // Restaurer la session et naviguer directement vers le dashboard
+          final childId = sessionData['childId'] as String;
+          final childData = sessionData['child'] as Map<String, dynamic>?;
+          
+          if (mounted) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (_) => ChildDashboardScreen(
+                  userData: childData ?? {},
+                  childId: childId,
+                ),
+              ),
+            );
+            return;
+          }
         }
-      } else {
-        // Pas connecté → Aller à l'onboarding
+      }
+      
+      // Pas connecté ou session invalide → Aller à l'onboarding
+      if (mounted) {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
@@ -115,6 +119,38 @@ class _SplashScreenState extends State<SplashScreen>
         );
       }
     }
+  }
+
+  Widget _buildLogo(double size) {
+    if (_settings?.logoUrl != null) {
+      // Construire l'URL complète du logo
+      final logoUrl = _settings!.logoUrl!;
+      final fullUrl = logoUrl.startsWith('http')
+          ? logoUrl
+          : '${ApiConfig.baseUrl}$logoUrl';
+      
+      return CachedNetworkImage(
+        imageUrl: fullUrl,
+        width: size,
+        height: size,
+        fit: BoxFit.contain,
+        placeholder: (context, url) => SizedBox(
+          width: size,
+          height: size,
+          child: const CircularProgressIndicator(),
+        ),
+        errorWidget: (context, url, error) => Image.asset(
+          'assets/images/logo_vacxcare.png',
+          width: size,
+          height: size,
+        ),
+      );
+    }
+    return Image.asset(
+      'assets/images/logo_vacxcare.png',
+      width: size,
+      height: size,
+    );
   }
 
   @override
@@ -163,25 +199,7 @@ class _SplashScreenState extends State<SplashScreen>
                         ),
                       ],
                     ),
-                    child: _settings?.logoUrl != null
-                        ? CachedNetworkImage(
-                            imageUrl: _settings!.logoUrl!,
-                            width: 140,
-                            height: 140,
-                            fit: BoxFit.contain,
-                            placeholder: (context, url) =>
-                                const CircularProgressIndicator(),
-                            errorWidget: (context, url, error) => Image.asset(
-                              'assets/images/logo_vacxcare.png',
-                              width: 140,
-                              height: 140,
-                            ),
-                          )
-                        : Image.asset(
-                            'assets/images/logo_vacxcare.png',
-                            width: 140,
-                            height: 140,
-                          ),
+                    child: _buildLogo(140),
                   ),
 
                   const SizedBox(height: 28),

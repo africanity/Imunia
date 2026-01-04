@@ -24,7 +24,7 @@ class ContactSupportScreen extends StatelessWidget {
   }
 
   Future<void> _launchEmail(BuildContext context, String email) async {
-    final uri = Uri.parse('mailto:$email?subject=Support Imunia');
+    final uri = Uri.parse('mailto:$email?subject=Support');
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri);
     } else {

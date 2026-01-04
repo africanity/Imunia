@@ -3,8 +3,11 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'create_pin_screen.dart';
 import '../../core/config/api_config.dart';
+import '../../services/settings_service.dart';
+import '../../models/system_settings.dart';
 
 class AccessCodeLoginScreen extends StatefulWidget {
   const AccessCodeLoginScreen({super.key});
@@ -23,6 +26,7 @@ class _AccessCodeLoginScreenState extends State<AccessCodeLoginScreen> with Tick
   String? error;
   bool _phoneHasFocus = false;
   bool _idHasFocus = false;
+  SystemSettings? _settings;
 
   final storage = const FlutterSecureStorage();
 
@@ -39,6 +43,7 @@ class _AccessCodeLoginScreenState extends State<AccessCodeLoginScreen> with Tick
   @override
   void initState() {
     super.initState();
+    _loadSettings();
     
     // Focus listeners
     phoneFocus.addListener(() {
@@ -89,6 +94,51 @@ class _AccessCodeLoginScreenState extends State<AccessCodeLoginScreen> with Tick
     // Start animations
     _fadeController.forward();
     _slideController.forward();
+  }
+
+  Future<void> _loadSettings() async {
+    try {
+      final settings = await SettingsService.getSystemSettings();
+      if (mounted) {
+        setState(() {
+          _settings = settings;
+        });
+      }
+    } catch (e) {
+      // Ignore errors, use default
+    }
+  }
+
+  Widget _buildLogo(double size) {
+    if (_settings?.logoUrl != null) {
+      // Construire l'URL complète du logo
+      final logoUrl = _settings!.logoUrl!;
+      final fullUrl = logoUrl.startsWith('http')
+          ? logoUrl
+          : '${ApiConfig.baseUrl}$logoUrl';
+      
+      return CachedNetworkImage(
+        imageUrl: fullUrl,
+        width: size,
+        height: size,
+        fit: BoxFit.contain,
+        placeholder: (context, url) => SizedBox(
+          width: size,
+          height: size,
+          child: const CircularProgressIndicator(),
+        ),
+        errorWidget: (context, url, error) => Image.asset(
+          "assets/images/logo_vacxcare.png",
+          width: size,
+          height: size,
+        ),
+      );
+    }
+    return Image.asset(
+      "assets/images/logo_vacxcare.png",
+      width: size,
+      height: size,
+    );
   }
 
   @override
@@ -229,19 +279,15 @@ class _AccessCodeLoginScreenState extends State<AccessCodeLoginScreen> with Tick
                           ),
                         ],
                       ),
-                      child: Image.asset(
-                        "assets/images/logo_vacxcare.png",
-                        width: 120,
-                        height: 120,
-                      ),
+                      child: _buildLogo(120),
                     ),
                   ),
 
                         const SizedBox(height: 20),
 
-                        // Titre IMUNIA
+                        // Titre
                         Text(
-                    "Imunia",
+                    _settings?.appName ?? "Imunia",
                     style: GoogleFonts.poppins(
                       fontSize: 36,
                       fontWeight: FontWeight.bold,

@@ -16,8 +16,10 @@ class SettingsService {
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        if (data['settings'] != null) {
-          return SystemSettings.fromJson(data['settings']);
+        // Le backend retourne directement les settings ou dans un objet 'settings'
+        final settingsData = data['settings'] ?? data;
+        if (settingsData != null) {
+          return SystemSettings.fromJson(settingsData);
         }
       }
       return null;

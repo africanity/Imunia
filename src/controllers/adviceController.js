@@ -65,6 +65,31 @@ const createAdvice = async (req, res, next) => {
       },
     });
 
+    // Enregistrer l'événement
+    logEventAsync({
+      type: "ADVICE",
+      action: "CREATE",
+      user: {
+        id: req.user.id,
+        firstName: req.user.firstName,
+        lastName: req.user.lastName,
+        email: req.user.email,
+        role: req.user.role,
+      },
+      entityType: "ADVICE",
+      entityId: advice.id,
+      entityName: advice.title,
+      details: {
+        title: advice.title,
+        category: advice.category,
+        ageUnit: advice.ageUnit,
+        minAge: advice.minAge,
+        maxAge: advice.maxAge,
+        specificAge: advice.specificAge,
+        isActive: advice.isActive,
+      },
+    });
+
     res.status(201).json(advice);
   } catch (error) {
     next(error);
@@ -113,6 +138,42 @@ const updateAdvice = async (req, res, next) => {
       },
     });
 
+    // Enregistrer l'événement
+    logEventAsync({
+      type: "ADVICE",
+      action: "UPDATE",
+      user: {
+        id: req.user.id,
+        firstName: req.user.firstName,
+        lastName: req.user.lastName,
+        email: req.user.email,
+        role: req.user.role,
+      },
+      entityType: "ADVICE",
+      entityId: id,
+      entityName: updated.title,
+      details: {
+        before: {
+          title: existing.title,
+          category: existing.category,
+          ageUnit: existing.ageUnit,
+          minAge: existing.minAge,
+          maxAge: existing.maxAge,
+          specificAge: existing.specificAge,
+          isActive: existing.isActive,
+        },
+        after: {
+          title: updated.title,
+          category: updated.category,
+          ageUnit: updated.ageUnit,
+          minAge: updated.minAge,
+          maxAge: updated.maxAge,
+          specificAge: updated.specificAge,
+          isActive: updated.isActive,
+        },
+      },
+    });
+
     res.json(updated);
   } catch (error) {
     next(error);
@@ -139,8 +200,36 @@ const deleteAdvice = async (req, res, next) => {
       return res.status(404).json({ message: "Conseil introuvable" });
     }
 
+    const advice = await prisma.advice.findUnique({
+      where: { id },
+    });
+
+    if (!advice) {
+      return res.status(404).json({ message: "Conseil introuvable" });
+    }
+
     await prisma.advice.delete({
       where: { id },
+    });
+
+    // Enregistrer l'événement
+    logEventAsync({
+      type: "ADVICE",
+      action: "DELETE",
+      user: {
+        id: req.user.id,
+        firstName: req.user.firstName,
+        lastName: req.user.lastName,
+        email: req.user.email,
+        role: req.user.role,
+      },
+      entityType: "ADVICE",
+      entityId: id,
+      entityName: advice.title,
+      details: {
+        title: advice.title,
+        category: advice.category,
+      },
     });
 
     res.status(204).end();

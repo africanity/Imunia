@@ -50,11 +50,11 @@ export default function StatCard({
 }: StatCardProps) {
   const accentCfg = accentClasses[accent];
   return (
-    <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm transition hover:shadow-md">
+    <div className="rounded-2xl md:rounded-3xl border border-slate-200 bg-white p-3 md:p-6 shadow-sm transition hover:shadow-md">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm font-medium text-slate-500">{title}</p>
-          <p className="mt-2 text-3xl font-semibold text-slate-900">
+          <p className="text-xs md:text-sm font-medium text-slate-500">{title}</p>
+          <p className="mt-1 md:mt-2 text-xl md:text-3xl font-semibold text-slate-900">
             {loading ? (
               <span className="animate-pulse text-slate-300">•••</span>
             ) : (
@@ -63,9 +63,9 @@ export default function StatCard({
           </p>
         </div>
         <div
-          className={`rounded-2xl p-3 ${accentCfg.bg} ring-4 ${accentCfg.ring}`}
+          className={`rounded-xl md:rounded-2xl p-2 md:p-3 ${accentCfg.bg} ring-2 md:ring-4 ${accentCfg.ring}`}
         >
-          <Icon className={`h-6 w-6 ${accentCfg.icon}`} />
+          <Icon className={`h-4 w-4 md:h-6 md:w-6 ${accentCfg.icon}`} />
         </div>
       </div>
     </div>

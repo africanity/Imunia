@@ -10,6 +10,7 @@ const OWNER_TYPES = {
 const LOT_STATUS = {
   VALID: "VALID",
   EXPIRED: "EXPIRED",
+  PENDING: "PENDING",
 };
 
 const normalizeOwnerId = (ownerType, ownerId) =>
@@ -58,6 +59,7 @@ const createLot = async (
     expiration,
     sourceLotId = null,
     status,
+    pendingTransferId = null,
   },
 ) => {
   const db = getDbClient(tx);
@@ -68,13 +70,23 @@ const createLot = async (
     throw error;
   }
 
-  if (!Number.isFinite(quantity) || quantity <= 0) {
-    const error = new Error("La quantité du lot doit être positive");
+  // Permettre quantity: 0 uniquement pour les lots PENDING
+  const isPending = status === LOT_STATUS.PENDING;
+  if (!Number.isFinite(quantity) || quantity < 0 || (!isPending && quantity <= 0)) {
+    const error = new Error("La quantité du lot doit être positive (ou 0 pour PENDING)");
     error.status = 400;
     throw error;
   }
 
-  const lotStatus = status ?? determineStatusFromExpiration(expirationDate);
+  // Déterminer le statut : si un statut est fourni explicitement, l'utiliser
+  // Sinon, déterminer selon la date d'expiration
+  // MAIS : si la date est expirée, forcer EXPIRED même si PENDING était demandé
+  let lotStatus = status ?? determineStatusFromExpiration(expirationDate);
+  const now = new Date();
+  if (expirationDate <= now && lotStatus !== LOT_STATUS.EXPIRED) {
+    // Si le lot est expiré, forcer EXPIRED même si PENDING ou VALID était demandé
+    lotStatus = LOT_STATUS.EXPIRED;
+  }
 
   const lot = await db.stockLot.create({
     data: {
@@ -86,6 +98,7 @@ const createLot = async (
       expiration: expirationDate,
       status: lotStatus,
       sourceLotId,
+      pendingTransferId,
     },
   });
 
@@ -201,9 +214,10 @@ const refreshExpiredLots = async (tx) => {
   const db = getDbClient(tx);
   const now = new Date();
 
+  // Récupérer tous les lots expirés (VALID ou PENDING)
   const expiredLots = await db.stockLot.findMany({
     where: {
-      status: LOT_STATUS.VALID,
+      status: { in: [LOT_STATUS.VALID, LOT_STATUS.PENDING] },
       expiration: {
         lt: now,
       },
@@ -216,6 +230,7 @@ const refreshExpiredLots = async (tx) => {
 
   const expiredIds = expiredLots.map((lot) => lot.id);
 
+  // Mettre à jour tous les lots expirés (VALID ou PENDING) en EXPIRED
   await db.stockLot.updateMany({
     where: { id: { in: expiredIds } },
     data: { status: LOT_STATUS.EXPIRED },
@@ -341,6 +356,74 @@ const modifyStockQuantity = async (
     default:
       return null;
   }
+};
+
+// Supprime un lot directement sans cascade (ne supprime pas les lots dérivés)
+const deleteLotDirect = async (tx, lotId) => {
+  const db = getDbClient(tx);
+
+  const lot = await db.stockLot.findUnique({
+    where: { id: lotId },
+  });
+
+  if (!lot) {
+    return null;
+  }
+
+  // Supprimer les références dans les transferts en attente
+  const relatedPendingLots = await db.pendingStockTransferLot.findMany({
+    where: { lotId: lot.id },
+    select: { pendingTransferId: true },
+  });
+
+  const pendingTransferIds = new Set();
+  relatedPendingLots.forEach(({ pendingTransferId }) => {
+    if (pendingTransferId) {
+      pendingTransferIds.add(pendingTransferId);
+    }
+  });
+
+  await db.pendingStockTransferLot.deleteMany({
+    where: { lotId: lot.id },
+  });
+
+  // Supprimer les références dans les transferts confirmés
+  await db.stockTransferLot.deleteMany({
+    where: { lotId: lot.id },
+  });
+
+  // Supprimer les réservations
+  await db.stockReservation.deleteMany({
+    where: { stockLotId: lot.id },
+  });
+
+  // Ajuster la quantité du stock si le lot a une quantité restante
+  if (lot.remainingQuantity > 0) {
+    await modifyStockQuantity(db, {
+      vaccineId: lot.vaccineId,
+      ownerType: lot.ownerType,
+      ownerId: lot.ownerId,
+      delta: -lot.remainingQuantity,
+    });
+  }
+
+  // Mettre à jour la date d'expiration la plus proche
+  await updateNearestExpiration(db, {
+    vaccineId: lot.vaccineId,
+    ownerType: lot.ownerType,
+    ownerId: lot.ownerId,
+  });
+
+  // Supprimer le lot
+  await db.stockLot.delete({
+    where: { id: lot.id },
+  });
+
+  // NE PAS supprimer les transferts en attente même s'ils n'ont plus de lots
+  // Les transferts restent pour permettre la confirmation même si le lot source a été supprimé
+  // Les références dans PendingStockTransferLot ont déjà été supprimées plus haut
+
+  return lot.id;
 };
 
 const deleteLotCascade = async (tx, lotId) => {
@@ -650,6 +733,146 @@ const releaseDoseForHealthCenter = async (
   return true;
 };
 
+// Restaure ou recrée un lot pour un transfert refusé/annulé
+const restoreOrRecreateLotForRejectedTransfer = async (
+  tx,
+  { lotId, quantity, vaccineId, ownerType, ownerId, expiration, status },
+) => {
+  const db = getDbClient(tx);
+  const normalizedOwnerId = normalizeOwnerId(ownerType, ownerId);
+
+  // 1. Vérifier si le lot parent existe encore
+  const existingLot = await db.stockLot.findUnique({
+    where: { id: lotId },
+  });
+
+  if (existingLot) {
+    // Le lot existe : restaurer la quantité
+    await db.stockLot.update({
+      where: { id: lotId },
+      data: {
+        remainingQuantity: existingLot.remainingQuantity + quantity,
+      },
+    });
+
+    // Augmenter le stock
+    await modifyStockQuantity(db, {
+      vaccineId,
+      ownerType,
+      ownerId,
+      delta: quantity,
+    });
+
+    await updateNearestExpiration(db, { vaccineId, ownerType, ownerId });
+
+    return { restored: true, lotId: existingLot.id };
+  }
+
+  // 2. Le lot n'existe plus : vérifier si le stock existe
+  let stockExists = false;
+  switch (ownerType) {
+    case OWNER_TYPES.NATIONAL:
+      const nationalStock = await db.stockNATIONAL.findUnique({
+        where: { vaccineId },
+      });
+      stockExists = !!nationalStock;
+      if (!stockExists) {
+        // Créer le stock national
+        await db.stockNATIONAL.create({
+          data: { vaccineId, quantity: 0 },
+        });
+      }
+      break;
+    case OWNER_TYPES.REGIONAL: {
+      const regionalStock = await db.stockREGIONAL.findUnique({
+        where: {
+          vaccineId_regionId: {
+            vaccineId,
+            regionId: normalizedOwnerId,
+          },
+        },
+      });
+      stockExists = !!regionalStock;
+      if (!stockExists) {
+        // Créer le stock régional
+        await db.stockREGIONAL.create({
+          data: {
+            vaccineId,
+            regionId: normalizedOwnerId,
+            quantity: 0,
+          },
+        });
+      }
+      break;
+    }
+    case OWNER_TYPES.DISTRICT: {
+      const districtStock = await db.stockDISTRICT.findUnique({
+        where: {
+          vaccineId_districtId: {
+            vaccineId,
+            districtId: normalizedOwnerId,
+          },
+        },
+      });
+      stockExists = !!districtStock;
+      if (!stockExists) {
+        // Créer le stock district
+        await db.stockDISTRICT.create({
+          data: {
+            vaccineId,
+            districtId: normalizedOwnerId,
+            quantity: 0,
+          },
+        });
+      }
+      break;
+    }
+    case OWNER_TYPES.HEALTHCENTER: {
+      const healthCenterStock = await db.stockHEALTHCENTER.findUnique({
+        where: {
+          vaccineId_healthCenterId: {
+            vaccineId,
+            healthCenterId: normalizedOwnerId,
+          },
+        },
+      });
+      stockExists = !!healthCenterStock;
+      if (!stockExists) {
+        // Créer le stock health center
+        await db.stockHEALTHCENTER.create({
+          data: {
+            vaccineId,
+            healthCenterId: normalizedOwnerId,
+            quantity: 0,
+          },
+        });
+      }
+      break;
+    }
+  }
+
+  // 3. Créer un nouveau lot avec la quantité refusée
+  const newLot = await createLot(db, {
+    vaccineId,
+    ownerType,
+    ownerId,
+    quantity,
+    expiration: expiration || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // Par défaut 1 an si pas d'expiration
+    status: status || LOT_STATUS.VALID,
+    sourceLotId: null, // Pas de source car le lot original a été supprimé
+  });
+
+  // Augmenter le stock
+  await modifyStockQuantity(db, {
+    vaccineId,
+    ownerType,
+    ownerId,
+    delta: quantity,
+  });
+
+  return { restored: false, lotId: newLot.id, created: true };
+};
+
 module.exports = {
   OWNER_TYPES,
   LOT_STATUS,
@@ -658,9 +881,11 @@ module.exports = {
   recordTransfer,
   refreshExpiredLots,
   deleteLotCascade,
+  deleteLotDirect,
   updateNearestExpiration,
   modifyStockQuantity,
   reserveDoseForHealthCenter,
   releaseDoseForHealthCenter,
+  restoreOrRecreateLotForRejectedTransfer,
 };
 

@@ -66,6 +66,9 @@ const proofUpload = multer({
 // Demande de code de vérification
 router.post("/request-verification-code", mobileController.requestVerificationCode);
 
+// Renvoyer le code de vérification
+router.post("/resend-verification-code", mobileController.resendVerificationCode);
+
 // Inscription parent/enfant (après vérification du code)
 router.post("/parent-register", mobileController.parentRegister);
 

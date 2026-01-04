@@ -640,10 +640,11 @@ describe('vaccineController', () => {
     });
 
     // Tests de genre
-    it('devrait retourner 400 si vaccin spécifique au genre et genre incompatible', async () => {
+    it('devrait retourner 400 si vaccin spécifique au genre et genre incompatible (avec vaccineCalendarId)', async () => {
       req.body.childId = 'child-1';
       req.body.vaccineId = 'vaccine-1';
       req.body.scheduledFor = '2025-12-31T10:00:00Z';
+      req.body.vaccineCalendarId = 'calendar-1'; // Vaccin du calendrier
       const mockChild = { id: 'child-1', healthCenterId: 'healthcenter-1', gender: 'M' };
       const mockVaccine = { id: 'vaccine-1', dosesRequired: 1, gender: 'F' };
       prisma.$transaction.mockImplementation(async (callback) => {
@@ -655,7 +656,15 @@ describe('vaccineController', () => {
             findUnique: jest.fn().mockResolvedValue(mockVaccine),
           },
         };
-        return callback(mockTx);
+        try {
+          return await callback(mockTx);
+        } catch (error) {
+          if (error.status === 400) {
+            res.status(400).json({ message: error.message });
+            return;
+          }
+          throw error;
+        }
       });
 
       await ScheduleVaccine(req, res, next);
@@ -2076,6 +2085,9 @@ describe('vaccineController', () => {
     it('devrait supprimer un calendrier avec succès', async () => {
       req.user.role = 'NATIONAL';
       req.params.id = 'calendar-1';
+
+      const mockCalendar = { id: 'calendar-1', name: 'Test Calendar' };
+      prisma.vaccineCalendar.findUnique.mockResolvedValue(mockCalendar);
 
       // Mock pour reassignVaccineDoseNumbers (appelé après la transaction principale)
       prisma.vaccineCalendarDose.findMany.mockResolvedValue([]);

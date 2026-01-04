@@ -14,6 +14,18 @@ const requireAuth = async (req, res, next) => {
 
     const user = await prisma.user.findUnique({
       where: { id: payload.sub },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        role: true,
+        agentLevel: true,
+        isActive: true,
+        regionId: true,
+        districtId: true,
+        healthCenterId: true,
+      },
     });
 
     if (!user || !user.isActive) {
@@ -23,7 +35,8 @@ const requireAuth = async (req, res, next) => {
     req.user = user;
     next();
   } catch (error) {
-    next(error);
+    // Si erreur JWT (token mal formé, expiré, etc.), renvoie 401
+    return res.status(401).json({ message: "Token invalide" });
   }
 };
 
@@ -94,6 +107,18 @@ const optionalAuth = async (req, res, next) => {
 
     const user = await prisma.user.findUnique({
       where: { id: payload.sub },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        role: true,
+        agentLevel: true,
+        isActive: true,
+        regionId: true,
+        districtId: true,
+        healthCenterId: true,
+      },
     });
 
     if (!user || !user.isActive) {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 type Props = {
@@ -29,6 +30,11 @@ export default function AuthInput({
   className = "",
 }: Props) {
   const [focused, setFocused] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+
+  const isPassword = type === "password";
+  const isPin = isPassword && maxLength === 6;
+  const inputType = isPassword && !isPin && showPassword ? "text" : type;
 
   return (
     <div
@@ -43,7 +49,7 @@ export default function AuthInput({
       <div className="relative">
         <input
           name={name}
-          type={type}
+          type={inputType}
           placeholder={placeholder}
           value={value}
           onChange={(event) => onChange(event.target.value)}
@@ -56,11 +62,27 @@ export default function AuthInput({
               ? "border-emerald-500 bg-white shadow-lg shadow-emerald-500/20"
               : "border-slate-200 bg-white/50 hover:border-slate-300"
           } ${
-            type === "password" && maxLength === 6
+            isPin
               ? "text-center text-2xl font-mono tracking-widest"
-              : ""
+              : isPassword && !isPin
+                ? "pr-12"
+                : ""
           }`}
         />
+        {isPassword && !isPin && (
+          <button
+            type="button"
+            onClick={() => setShowPassword(!showPassword)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition-colors hover:text-slate-600 focus:outline-none"
+            aria-label={showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}
+          >
+            {showPassword ? (
+              <EyeOff className="h-5 w-5" />
+            ) : (
+              <Eye className="h-5 w-5" />
+            )}
+          </button>
+        )}
       </div>
     </div>
   );

@@ -1,5 +1,6 @@
 const prisma = require("../config/prismaClient");
 const { notifyNewCampaign } = require("../services/notificationService");
+const { logEventAsync } = require("../services/eventLogService");
 
 const getCampaigns = async (req, res, next) => {
   try {
@@ -163,6 +164,29 @@ const createCampaign = async (req, res, next) => {
       }
     });
 
+    // Enregistrer l'événement
+    logEventAsync({
+      type: "CAMPAIGN",
+      action: "CREATE",
+      user: {
+        id: req.user.id,
+        firstName: req.user.firstName,
+        lastName: req.user.lastName,
+        email: req.user.email,
+        role: req.user.role,
+      },
+      entityType: "CAMPAIGN",
+      entityId: campaign.id,
+      entityName: campaign.title,
+      details: {
+        title: campaign.title,
+        description: campaign.description,
+        startDate: campaign.startDate,
+        endDate: campaign.endDate,
+        regionId: campaign.regionId,
+      },
+    });
+
     res.status(201).json(campaign);
   } catch (error) {
     next(error);
@@ -234,6 +258,38 @@ const updateCampaign = async (req, res, next) => {
       },
     });
 
+    // Enregistrer l'événement
+    logEventAsync({
+      type: "CAMPAIGN",
+      action: "UPDATE",
+      user: {
+        id: req.user.id,
+        firstName: req.user.firstName,
+        lastName: req.user.lastName,
+        email: req.user.email,
+        role: req.user.role,
+      },
+      entityType: "CAMPAIGN",
+      entityId: id,
+      entityName: updated.title,
+      details: {
+        before: {
+          title: campaign.title,
+          description: campaign.description,
+          startDate: campaign.startDate,
+          endDate: campaign.endDate,
+          regionId: campaign.regionId,
+        },
+        after: {
+          title: updated.title,
+          description: updated.description,
+          startDate: updated.startDate,
+          endDate: updated.endDate,
+          regionId: updated.regionId,
+        },
+      },
+    });
+
     res.json(updated);
   } catch (error) {
     next(error);
@@ -267,6 +323,29 @@ const deleteCampaign = async (req, res, next) => {
 
     await prisma.campaign.delete({
       where: { id },
+    });
+
+    // Enregistrer l'événement
+    logEventAsync({
+      type: "CAMPAIGN",
+      action: "DELETE",
+      user: {
+        id: req.user.id,
+        firstName: req.user.firstName,
+        lastName: req.user.lastName,
+        email: req.user.email,
+        role: req.user.role,
+      },
+      entityType: "CAMPAIGN",
+      entityId: id,
+      entityName: campaign.title,
+      details: {
+        title: campaign.title,
+        description: campaign.description,
+        startDate: campaign.startDate,
+        endDate: campaign.endDate,
+        regionId: campaign.regionId,
+      },
     });
 
     res.status(204).end();

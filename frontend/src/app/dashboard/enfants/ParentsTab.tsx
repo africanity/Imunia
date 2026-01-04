@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   Baby,
-  RefreshCw,
   Search,
   Users,
 } from "lucide-react";
@@ -120,8 +119,8 @@ export default function ParentsTab({ token, apiBase }: Props) {
         </div>
       </div>
 
-      <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-        <div className="relative flex-1">
+      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+        <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
           <input
             value={search}
@@ -130,14 +129,6 @@ export default function ParentsTab({ token, apiBase }: Props) {
             className="w-full rounded-xl border border-slate-300 py-2.5 pl-11 pr-4 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
           />
         </div>
-        <button
-          type="button"
-          onClick={loadParents}
-          className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
-        >
-          <RefreshCw className="h-4 w-4" />
-          Actualiser
-        </button>
       </div>
 
       {loading ? (
@@ -200,7 +191,7 @@ export default function ParentsTab({ token, apiBase }: Props) {
 
       {selectedParent && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4 py-8">
-          <div className="w-full max-w-4xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
+          <div className="w-full max-w-[95vw] md:max-w-4xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
             <div className="flex items-center justify-between bg-gradient-to-r from-purple-600 to-purple-700 px-6 py-4 text-white">
               <div>
                 <h3 className="text-xl font-semibold">{selectedParent.parentName}</h3>
@@ -260,7 +251,7 @@ export default function ParentsTab({ token, apiBase }: Props) {
 
       {selectedChild && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4 py-8">
-          <div className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
+          <div className="w-full max-w-[95vw] md:max-w-md rounded-3xl border border-slate-200 bg-white p-4 md:p-6 shadow-2xl">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold text-slate-900">
                 {selectedChild.firstName} {selectedChild.lastName}

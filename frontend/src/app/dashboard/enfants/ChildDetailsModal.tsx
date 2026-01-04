@@ -84,6 +84,7 @@ type ScheduleOption = {
   vaccineName: string;
   calendarId: string | null;
   label: string;
+  status?: "due" | "late" | "overdue" | "other";
 };
 
 export default function ChildDetailsModal({
@@ -106,6 +107,7 @@ export default function ChildDetailsModal({
   const [scheduleDate, setScheduleDate] = useState("");
   const [scheduleError, setScheduleError] = useState<string | null>(null);
   const [scheduleSubmitting, setScheduleSubmitting] = useState(false);
+  const [genderWarning, setGenderWarning] = useState<string | null>(null);
   const [currentNextAppointment, setCurrentNextAppointment] = useState<string | null>(
     child.nextAppointment ?? null,
   );
@@ -193,93 +195,241 @@ export default function ChildDetailsModal({
       return;
     }
 
-    const optionMap = new Map<string, ScheduleOption>();
-    const pushOption = (
-      vaccineId: string,
-      vaccineName: string,
-      calendarId: string | null,
-      contextLabel?: string | null,
-    ) => {
-      if (!vaccineId || !vaccineName) return;
-      const existing = optionMap.get(vaccineId);
-      const label =
-        contextLabel && contextLabel.trim().length > 0
-          ? `${vaccineName} • ${contextLabel}`
-          : vaccineName;
+    // Récupérer les doses complétées et programmées pour chaque vaccin
+    const completedDosesByVaccine = new Map<string, Set<number>>();
+    const scheduledDosesByVaccine = new Map<string, Set<number>>();
 
-      if (!existing) {
-        optionMap.set(vaccineId, {
-          vaccineId,
-          vaccineName,
-          calendarId,
-          label,
+    detail.vaccinations.completed.forEach((entry) => {
+      if (!completedDosesByVaccine.has(entry.vaccineId)) {
+        completedDosesByVaccine.set(entry.vaccineId, new Set());
+      }
+      completedDosesByVaccine.get(entry.vaccineId)!.add(entry.dose);
+    });
+
+    detail.vaccinations.scheduled.forEach((entry) => {
+      if (!scheduledDosesByVaccine.has(entry.vaccineId)) {
+        scheduledDosesByVaccine.set(entry.vaccineId, new Set());
+      }
+      scheduledDosesByVaccine.get(entry.vaccineId)!.add(entry.dose);
+    });
+
+    // Fonction pour vérifier si une dose est déjà faite ou programmée
+    const isDoseAlreadyDoneOrScheduled = (vaccineId: string, dose: number): boolean => {
+      const completed = completedDosesByVaccine.get(vaccineId)?.has(dose) ?? false;
+      const scheduled = scheduledDosesByVaccine.get(vaccineId)?.has(dose) ?? false;
+      return completed || scheduled;
+    };
+
+    // Fonction pour trouver la dose la plus petite non programmée/non complétée
+    const findNextAvailableDose = (vaccineId: string, dosesRequired: number = 10): number => {
+      let dose = 1;
+      while (dose <= dosesRequired) {
+        if (!isDoseAlreadyDoneOrScheduled(vaccineId, dose)) {
+          return dose;
+        }
+        dose++;
+      }
+      return dose; // Si toutes les doses sont prises, retourner la suivante
+    };
+
+    // Collecter toutes les entrées de "due", "late" et "overdue" avec leur dose
+    const availableEntries: Array<{
+      vaccineId: string;
+      vaccineName: string;
+      calendarId: string | null;
+      dose: number;
+      status: "due" | "late" | "overdue" | "other";
+    }> = [];
+
+    const vaccinesInList = new Set<string>();
+
+    detail.vaccinations.due.forEach((entry) => {
+      if (!isDoseAlreadyDoneOrScheduled(entry.vaccineId, entry.dose)) {
+        vaccinesInList.add(entry.vaccineId);
+        availableEntries.push({
+          vaccineId: entry.vaccineId,
+          vaccineName: entry.vaccineName,
+          calendarId: entry.calendarId ?? null,
+          dose: entry.dose,
+          status: "due",
         });
-      } else if (!existing.calendarId && calendarId) {
-        existing.calendarId = calendarId;
+      }
+    });
+
+    detail.vaccinations.late.forEach((entry) => {
+      if (!isDoseAlreadyDoneOrScheduled(entry.vaccineId, entry.dose)) {
+        vaccinesInList.add(entry.vaccineId);
+        availableEntries.push({
+          vaccineId: entry.vaccineId,
+          vaccineName: entry.vaccineName,
+          calendarId: entry.calendarId ?? null,
+          dose: entry.dose,
+          status: "late",
+        });
+      }
+    });
+
+    detail.vaccinations.overdue.forEach((entry) => {
+      if (!isDoseAlreadyDoneOrScheduled(entry.vaccineId, entry.dose)) {
+        vaccinesInList.add(entry.vaccineId);
+        availableEntries.push({
+          vaccineId: entry.vaccineId,
+          vaccineName: entry.vaccineName,
+          calendarId: entry.calendarId ?? null,
+          dose: entry.dose,
+          status: "overdue",
+        });
+      }
+    });
+
+    // Pour chaque vaccin, garder seulement la dose la plus petite
+    const vaccineToSmallestDose = new Map<string, typeof availableEntries[0]>();
+    availableEntries.forEach((entry) => {
+      const existing = vaccineToSmallestDose.get(entry.vaccineId);
+      if (!existing || entry.dose < existing.dose) {
+        vaccineToSmallestDose.set(entry.vaccineId, entry);
+      }
+    });
+
+    // Récupérer tous les vaccins disponibles et ajouter ceux qui ne sont pas déjà dans la liste
+    const loadAllVaccines = async () => {
+      try {
+        const response = await fetch(`${apiBase}/api/vaccine`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        });
+
+        if (!response.ok) {
+          console.error("Erreur chargement vaccins:", response.status);
+          return;
+        }
+
+        const data = await response.json();
+        const allVaccines = Array.isArray(data) ? data : (data.vaccines || []);
+
+        // Filtrer selon le genre de l'enfant si nécessaire
+        const childGender = detail.child?.gender;
+        const suitableVaccines = allVaccines.filter((vaccine: any) => {
+          // Si le vaccin a un genre spécifié, il doit correspondre au genre de l'enfant
+          if (vaccine.gender && childGender) {
+            return vaccine.gender === childGender;
+          }
+          // Si le vaccin n'a pas de genre spécifié, il est pour tous
+          return true;
+        });
+
+        // Pour chaque vaccin qui n'est pas déjà dans la liste, ajouter la dose la plus petite disponible
+        suitableVaccines.forEach((vaccine: any) => {
+          if (!vaccinesInList.has(vaccine.id)) {
+            const dosesRequired = parseInt(vaccine.dosesRequired) || 10;
+            const nextDose = findNextAvailableDose(vaccine.id, dosesRequired);
+            
+            // Ne pas ajouter si toutes les doses sont déjà prises
+            if (nextDose <= dosesRequired) {
+              vaccineToSmallestDose.set(vaccine.id, {
+                vaccineId: vaccine.id,
+                vaccineName: vaccine.name,
+                calendarId: null,
+                dose: nextDose,
+                status: "other",
+              });
+            }
+          }
+        });
+
+        // Construire les options avec le bon label
+        const options: ScheduleOption[] = Array.from(vaccineToSmallestDose.values()).map((entry) => {
+          let contextLabel = "";
+          if (entry.status === "due") {
+            contextLabel = `dose ${entry.dose} à faire`;
+          } else if (entry.status === "late") {
+            contextLabel = `dose ${entry.dose} en retard`;
+          } else if (entry.status === "overdue") {
+            contextLabel = `dose ${entry.dose} en retard`;
+          } else {
+            contextLabel = `dose ${entry.dose}`;
+          }
+
+          return {
+            vaccineId: entry.vaccineId,
+            vaccineName: entry.vaccineName,
+            calendarId: entry.calendarId,
+            label: `${entry.vaccineName} • ${contextLabel}`,
+            status: entry.status,
+          };
+        });
+
+        // Trier : d'abord "à faire", puis "en retard", puis le reste, puis par nom de vaccin
+        const statusOrder = { due: 0, late: 1, overdue: 1, other: 2 };
+        options.sort((a, b) => {
+          const statusA = statusOrder[(a as any).status as keyof typeof statusOrder] ?? 2;
+          const statusB = statusOrder[(b as any).status as keyof typeof statusOrder] ?? 2;
+          
+          if (statusA !== statusB) {
+            return statusA - statusB;
+          }
+          
+          // Si même statut, trier par nom de vaccin
+          return a.label.localeCompare(b.label, "fr", { sensitivity: "base" });
+        });
+
+        setScheduleOptions(options);
+        if (options.length === 0) {
+          setSelectedVaccineId(null);
+          return;
+        }
+
+        setSelectedVaccineId((current) =>
+          current && options.some((option) => option.vaccineId === current)
+            ? current
+            : options[0].vaccineId,
+        );
+      } catch (err) {
+        console.error("Erreur chargement vaccins:", err);
+        // En cas d'erreur, utiliser seulement les vaccins "à faire" et "en retard"
+        const options: ScheduleOption[] = Array.from(vaccineToSmallestDose.values()).map((entry) => {
+          let contextLabel = "";
+          if (entry.status === "due") {
+            contextLabel = `dose ${entry.dose} à faire`;
+          } else if (entry.status === "late") {
+            contextLabel = `dose ${entry.dose} en retard`;
+          } else if (entry.status === "overdue") {
+            contextLabel = `dose ${entry.dose} en retard`;
+          }
+
+          return {
+            vaccineId: entry.vaccineId,
+            vaccineName: entry.vaccineName,
+            calendarId: entry.calendarId,
+            label: `${entry.vaccineName} • ${contextLabel}`,
+            status: entry.status,
+          };
+        });
+
+        // Trier : d'abord "à faire", puis "en retard", puis par nom de vaccin
+        const statusOrder = { due: 0, late: 1, overdue: 1, other: 2 };
+        options.sort((a, b) => {
+          const statusA = statusOrder[(a as any).status as keyof typeof statusOrder] ?? 2;
+          const statusB = statusOrder[(b as any).status as keyof typeof statusOrder] ?? 2;
+          
+          if (statusA !== statusB) {
+            return statusA - statusB;
+          }
+          
+          // Si même statut, trier par nom de vaccin
+          return a.label.localeCompare(b.label, "fr", { sensitivity: "base" });
+        });
+        setScheduleOptions(options);
+        if (options.length > 0) {
+          setSelectedVaccineId(options[0].vaccineId);
+        }
       }
     };
 
-    detail.vaccinations.due.forEach((entry) =>
-      pushOption(
-        entry.vaccineId,
-        entry.vaccineName,
-        entry.calendarId ?? null,
-        `dose ${entry.dose} à faire`,
-      ),
-    );
-
-    detail.vaccinations.late.forEach((entry) =>
-      pushOption(
-        entry.vaccineId,
-        entry.vaccineName,
-        entry.calendarId ?? null,
-        `dose ${entry.dose} en retard`,
-      ),
-    );
-
-    detail.vaccinations.overdue.forEach((entry) =>
-      pushOption(
-        entry.vaccineId,
-        entry.vaccineName,
-        entry.calendarId ?? null,
-        `dose ${entry.dose} manquée`,
-      ),
-    );
-
-    detail.vaccinations.scheduled.forEach((entry) =>
-      pushOption(
-        entry.vaccineId,
-        entry.vaccineName,
-        entry.calendarId ?? null,
-        `dose ${entry.dose} programmée`,
-      ),
-    );
-
-    detail.vaccinations.completed.forEach((entry) =>
-      pushOption(
-        entry.vaccineId,
-        entry.vaccineName,
-        entry.calendarId ?? null,
-        `dose ${entry.dose} administrée`,
-      ),
-    );
-
-    const options = Array.from(optionMap.values()).sort((a, b) =>
-      a.label.localeCompare(b.label, "fr", { sensitivity: "base" }),
-    );
-
-    setScheduleOptions(options);
-    if (options.length === 0) {
-      setSelectedVaccineId(null);
-      return;
-    }
-
-    setSelectedVaccineId((current) =>
-      current && options.some((option) => option.vaccineId === current)
-        ? current
-        : options[0].vaccineId,
-    );
-  }, [detail]);
+    loadAllVaccines();
+  }, [detail, apiBase, token]);
 
   const statusLabel = useMemo(() => deriveStatusLabel(child), [child]);
 
@@ -310,6 +460,15 @@ export default function ChildDetailsModal({
     setScheduleError(null);
     setScheduleSubmitting(false);
     setSelectedAgentId(null);
+    setGenderWarning(null);
+  };
+
+  const handleConfirmGenderWarning = async () => {
+    setGenderWarning(null);
+    // Le rendez-vous a déjà été créé, on peut juste rafraîchir et fermer
+    await fetchDetail();
+    await onRefresh?.();
+    handleCloseSchedule();
   };
 
   const handleSubmitSchedule = async (event: React.FormEvent) => {
@@ -369,6 +528,15 @@ export default function ChildDetailsModal({
         throw new Error(errorMessage);
       }
 
+      const data = await response.json();
+      
+      // Si le backend retourne un warning, l'afficher dans une modale
+      if (data.warning) {
+        setGenderWarning(data.warning);
+        // Ne pas fermer le modal, attendre que l'utilisateur confirme
+        return;
+      }
+
       await fetchDetail();
       await onRefresh?.();
       handleCloseSchedule();
@@ -384,7 +552,7 @@ export default function ChildDetailsModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4 py-4">
-      <div className="relative w-full max-w-3xl max-h-[90vh] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl flex flex-col">
+      <div className="relative w-full max-w-[95vw] md:max-w-3xl max-h-[90vh] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl flex flex-col">
         <div className="flex items-center justify-between bg-gradient-to-r from-blue-600 to-blue-800 px-6 py-3 text-white flex-shrink-0">
           <div>
             <p className="text-xs uppercase tracking-wide text-blue-100">Dossier médical</p>
@@ -718,6 +886,32 @@ export default function ChildDetailsModal({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {genderWarning && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/70 px-4">
+          <div className="w-full max-w-md rounded-2xl border border-amber-200 bg-white p-6 shadow-2xl">
+            <div className="mb-4 flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100">
+                <AlertCircle className="h-5 w-5 text-amber-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">Avertissement</h3>
+                <p className="text-sm text-slate-600">Vaccin non adapté au genre</p>
+              </div>
+            </div>
+            <p className="mb-6 text-sm text-slate-700">{genderWarning}</p>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={handleConfirmGenderWarning}
+                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+              >
+                J'ai compris, continuer
+              </button>
+            </div>
           </div>
         </div>
       )}

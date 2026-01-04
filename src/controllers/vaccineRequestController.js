@@ -1,6 +1,6 @@
 const prisma = require("../config/prismaClient");
 const { sendVaccineRequestEmail } = require("../services/emailService");
-const { notifyVaccineScheduled } = require("../services/notificationService");
+const { notifyVaccineScheduled, notifyHealthCenterAgents } = require("../services/notificationService");
 const {
   reserveDoseForHealthCenter,
 } = require("../services/stockLotService");
@@ -332,6 +332,20 @@ const createVaccineRequest = async (req, res, next) => {
     );
 
     await Promise.allSettled(emailPromises);
+
+    // Notifier les agents du centre (après la réponse pour ne pas bloquer)
+    setImmediate(async () => {
+      try {
+        await notifyHealthCenterAgents({
+          healthCenterId: child.healthCenterId,
+          title: "Nouvelle demande de rendez-vous",
+          message: `Un parent a demandé un rendez-vous pour ${request.child.firstName} ${request.child.lastName} - ${request.vaccine.name} (Dose ${resolvedDose})`,
+          type: "VACCINE_REQUEST_CREATED",
+        });
+      } catch (notifError) {
+        console.error("Erreur notification agents:", notifError);
+      }
+    });
 
     res.status(201).json({
       success: true,
@@ -697,7 +711,7 @@ const scheduleVaccineRequest = async (req, res, next) => {
 
 /**
  * DELETE /api/vaccine-requests/:id
- * Annuler une demande
+ * Annuler/Supprimer une demande (agent peut supprimer, parent peut annuler)
  */
 const cancelVaccineRequest = async (req, res, next) => {
   try {
@@ -708,7 +722,16 @@ const cancelVaccineRequest = async (req, res, next) => {
       include: {
         child: {
           select: {
+            id: true,
+            firstName: true,
+            lastName: true,
             healthCenterId: true,
+          },
+        },
+        vaccine: {
+          select: {
+            id: true,
+            name: true,
           },
         },
       },
@@ -736,16 +759,50 @@ const cancelVaccineRequest = async (req, res, next) => {
       });
     }
 
-    await prisma.vaccineRequest.update({
-      where: { id },
-      data: {
-        status: "CANCELLED",
-      },
-    });
+    // Sauvegarder les infos pour la notification avant suppression
+    const requestInfo = {
+      childId: request.childId,
+      childName: `${request.child.firstName} ${request.child.lastName}`,
+      vaccineName: request.vaccine?.name || "vaccin",
+      dose: request.dose,
+    };
+
+    // Si c'est un agent qui supprime, on supprime complètement la demande
+    // Sinon (parent), on la marque comme annulée
+    if (req.user.role === "AGENT") {
+      await prisma.vaccineRequest.delete({
+        where: { id },
+      });
+    } else {
+      await prisma.vaccineRequest.update({
+        where: { id },
+        data: {
+          status: "CANCELLED",
+        },
+      });
+    }
+
+    // Si c'est un agent qui a supprimé, notifier le parent que la demande a été refusée
+    if (req.user.role === "AGENT") {
+      setImmediate(async () => {
+        try {
+          const { createAndSendNotification } = require("../services/notificationService");
+          await createAndSendNotification({
+            childId: requestInfo.childId,
+            title: "Demande de rendez-vous refusée",
+            message: `Votre demande de rendez-vous pour le vaccin ${requestInfo.vaccineName} (Dose ${requestInfo.dose}) a été refusée.`,
+            type: "vaccine_request_refused",
+            sendSocket: true,
+          });
+        } catch (notifError) {
+          console.error("Erreur notification parent (demande refusée):", notifError);
+        }
+      });
+    }
 
     res.json({
       success: true,
-      message: "Demande annulée avec succès",
+      message: req.user.role === "AGENT" ? "Demande supprimée avec succès" : "Demande annulée avec succès",
     });
   } catch (error) {
     next(error);

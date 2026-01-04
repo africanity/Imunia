@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'pin_login_screen.dart';
 import 'access_code_login_screen.dart';
 import 'parent_registration_screen.dart';
+import '../../services/settings_service.dart';
+import '../../models/system_settings.dart';
+import '../../core/config/api_config.dart';
 
 /// Écran de choix entre Se connecter avec accès ou Créer un compte
 class AuthOptionScreen extends StatefulWidget {
@@ -17,10 +21,12 @@ class _AuthOptionScreenState extends State<AuthOptionScreen>
   late AnimationController _controller;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
+  SystemSettings? _settings;
 
   @override
   void initState() {
     super.initState();
+    _loadSettings();
 
     _controller = AnimationController(
       vsync: this,
@@ -41,6 +47,51 @@ class _AuthOptionScreenState extends State<AuthOptionScreen>
     ));
 
     _controller.forward();
+  }
+
+  Future<void> _loadSettings() async {
+    try {
+      final settings = await SettingsService.getSystemSettings();
+      if (mounted) {
+        setState(() {
+          _settings = settings;
+        });
+      }
+    } catch (e) {
+      // Ignore errors, use default
+    }
+  }
+
+  Widget _buildLogo(double size) {
+    if (_settings?.logoUrl != null) {
+      // Construire l'URL complète du logo
+      final logoUrl = _settings!.logoUrl!;
+      final fullUrl = logoUrl.startsWith('http')
+          ? logoUrl
+          : '${ApiConfig.baseUrl}$logoUrl';
+      
+      return CachedNetworkImage(
+        imageUrl: fullUrl,
+        width: size,
+        height: size,
+        fit: BoxFit.contain,
+        placeholder: (context, url) => SizedBox(
+          width: size,
+          height: size,
+          child: const CircularProgressIndicator(),
+        ),
+        errorWidget: (context, url, error) => Image.asset(
+          "assets/images/logo_vacxcare.png",
+          width: size,
+          height: size,
+        ),
+      );
+    }
+    return Image.asset(
+      "assets/images/logo_vacxcare.png",
+      width: size,
+      height: size,
+    );
   }
 
   @override
@@ -93,18 +144,14 @@ class _AuthOptionScreenState extends State<AuthOptionScreen>
                             ),
                           ],
                         ),
-                        child: Image.asset(
-                          "assets/images/logo_vacxcare.png",
-                          width: 100,
-                          height: 100,
-                        ),
+                        child: _buildLogo(100),
                       ),
 
                       const SizedBox(height: 28),
 
                       // Titre
                       Text(
-                        "Bienvenue sur Imunia",
+                        "Bienvenue sur ${_settings?.appName ?? "Imunia"}",
                         style: GoogleFonts.poppins(
                           fontSize: 28,
                           fontWeight: FontWeight.bold,

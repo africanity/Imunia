@@ -132,11 +132,61 @@ const monthKeyFromDate = (value) => {
 };
 
 const getNationalDashboardStats = async (req, res, next) => {
-  if (req.user.role !== "NATIONAL") {
+  if (req.user.role !== "NATIONAL" && req.user.role !== "SUPERADMIN") {
     return res.status(403).json({ message: "Accès réservé au niveau national." });
   }
 
   try {
+    const { regionId, districtId, healthCenterId } = req.query;
+
+    // Construire les conditions de filtre pour les enfants
+    let childrenWhere = {};
+    if (healthCenterId) {
+      childrenWhere = { healthCenterId };
+    } else if (districtId) {
+      childrenWhere = { healthCenter: { districtId } };
+    } else if (regionId) {
+      childrenWhere = {
+        healthCenter: {
+          district: {
+            commune: {
+              regionId,
+            },
+          },
+        },
+      };
+    }
+
+    // Construire les conditions de filtre pour les vaccinations
+    let vaccinationWhere = {};
+    if (healthCenterId) {
+      vaccinationWhere = {
+        child: {
+          healthCenterId,
+        },
+      };
+    } else if (districtId) {
+      vaccinationWhere = {
+        child: {
+          healthCenter: {
+            districtId,
+          },
+        },
+      };
+    } else if (regionId) {
+      vaccinationWhere = {
+        child: {
+          healthCenter: {
+            district: {
+              commune: {
+                regionId,
+              },
+            },
+          },
+        },
+      };
+    }
+
     const earliestMonth = new Date();
     earliestMonth.setDate(1);
     earliestMonth.setHours(0, 0, 0, 0);
@@ -149,10 +199,11 @@ const getNationalDashboardStats = async (req, res, next) => {
       vaccinesWithCoverage,
       lateVaccines,
     ] = await Promise.all([
-      prisma.children.count(),
-      prisma.childVaccineCompleted.count(),
+      prisma.children.count({ where: childrenWhere }),
+      prisma.childVaccineCompleted.count({ where: vaccinationWhere }),
       prisma.childVaccineCompleted.findMany({
         where: {
+          ...vaccinationWhere,
           administeredAt: {
             gte: earliestMonth,
           },
@@ -167,12 +218,15 @@ const getNationalDashboardStats = async (req, res, next) => {
           name: true,
           _count: {
             select: {
-              completedByChildren: true,
+              completedByChildren: {
+                where: vaccinationWhere,
+              },
             },
           },
         },
       }),
       prisma.childVaccineLate.findMany({
+        where: vaccinationWhere,
         select: {
           id: true,
           child: {

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../child/child_dashboard_screen.dart';
 
 class ChildSelectionScreen extends StatefulWidget {
@@ -17,6 +18,8 @@ class ChildSelectionScreen extends StatefulWidget {
 }
 
 class _ChildSelectionScreenState extends State<ChildSelectionScreen> {
+  final storage = const FlutterSecureStorage();
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -96,9 +99,17 @@ class _ChildSelectionScreenState extends State<ChildSelectionScreen> {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: () {
+          onTap: () async {
             // Naviguer vers l'interface enfant
             final childId = child['id'] ?? child['_id'] ?? '';
+            // Stocker les informations pour la restauration de session
+            await storage.write(key: 'child_id', value: childId.toString());
+            final parentPhone = child['parentPhone'] as String?;
+            if (parentPhone != null) {
+              await storage.write(key: 'parent_phone', value: parentPhone);
+            }
+            
+            if (!mounted) return;
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(

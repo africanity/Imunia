@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { MapPin, Plus, RefreshCw, Trash2, Pencil, X, Loader2 } from "lucide-react";
+import { MapPin, Plus, Trash2, Pencil, X, Loader2 } from "lucide-react";
 import DashboardShell from "@/app/dashboard/components/DashboardShell";
 import StatCard from "@/app/dashboard/components/StatCard";
 import { useAuth } from "@/context/AuthContext";
@@ -275,48 +275,47 @@ export default function RegionsPage() {
       );
     }
 
-    return regions.map((region, index) => (
-      <div
-        key={region.id}
-        className="hover-lift rounded-3xl border border-slate-200 bg-white p-6 transition"
-        style={{ animationDelay: `${index * 40}ms` }}
-      >
-        <div className="flex items-center gap-3">
-          <div className="rounded-2xl bg-emerald-500/10 p-3 text-emerald-600">
-            <MapPin className="h-6 w-6" />
+    return regions.map((region, index) => {
+      const initials = region.name.substring(0, 2).toUpperCase();
+      
+      return (
+        <div
+          key={region.id}
+          className="flex h-full flex-col rounded-3xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-md"
+          style={{ animationDelay: `${index * 40}ms` }}
+        >
+          <div className="flex items-start gap-4">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-emerald-400 to-emerald-500 text-lg font-bold text-white shadow-sm ring-2 ring-white">
+              {initials}
+            </div>
+            <div className="flex-1">
+              <h3 className="text-lg font-semibold text-slate-900">{region.name}</h3>
+            </div>
           </div>
-          <div>
-            <h3 className="text-lg font-semibold text-slate-900">{region.name}</h3>
-            <p className="text-sm text-slate-500">Région active</p>
-          </div>
-        </div>
 
-        {user?.role === "NATIONAL" && (
-          <div className="mt-6 flex gap-2 border-t border-slate-100 pt-4">
-            <button
-              type="button"
-              onClick={() => openEditModal(region)}
-              className="flex-1 rounded-xl bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-600 transition hover:bg-emerald-100"
-            >
-              <span className="flex items-center justify-center gap-2">
+          {user?.role === "NATIONAL" && (
+            <div className="mt-4 flex justify-end gap-2 border-t border-slate-100 pt-4">
+              <button
+                type="button"
+                onClick={() => openEditModal(region)}
+                className="rounded-lg bg-emerald-50 p-2 text-emerald-600 transition hover:bg-emerald-100"
+                title="Modifier"
+              >
                 <Pencil className="h-4 w-4" />
-                Modifier
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => openDeleteModal(region)}
-              className="flex-1 rounded-xl bg-red-50 px-3 py-2 text-sm font-medium text-red-600 transition hover:bg-red-100"
-            >
-              <span className="flex items-center justify-center gap-2">
+              </button>
+              <button
+                type="button"
+                onClick={() => openDeleteModal(region)}
+                className="rounded-lg bg-red-50 p-2 text-red-600 transition hover:bg-red-100"
+                title="Supprimer"
+              >
                 <Trash2 className="h-4 w-4" />
-                Supprimer
-              </span>
-            </button>
-          </div>
-        )}
-      </div>
-    ));
+              </button>
+            </div>
+          )}
+        </div>
+      );
+    });
   }, [regions, loading, user]);
 
   const regionDeleteSummaryItems = useMemo(() => {
@@ -358,14 +357,6 @@ export default function RegionsPage() {
             </div>
 
             <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={fetchRegions}
-                className="flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-emerald-400 hover:text-emerald-600"
-              >
-                <RefreshCw className="h-4 w-4" />
-                Actualiser
-              </button>
               {user?.role === "NATIONAL" && (
                 <button
                   type="button"
@@ -395,7 +386,7 @@ export default function RegionsPage() {
             </div>
           )}
 
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
             {regionCards}
           </div>
         </div>
@@ -403,7 +394,7 @@ export default function RegionsPage() {
 
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-          <div className="w-full max-w-md rounded-3xl bg-white shadow-2xl">
+          <div className="w-full max-w-[95vw] md:max-w-md rounded-3xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
               <div className="flex items-center gap-2 text-lg font-semibold text-slate-800">
                 <MapPin className="h-5 w-5 text-emerald-600" />
@@ -454,7 +445,7 @@ export default function RegionsPage() {
 
       {deleteTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-          <div className="w-full max-w-md rounded-3xl bg-white shadow-2xl">
+          <div className="w-full max-w-[95vw] md:max-w-md rounded-3xl bg-white shadow-2xl">
             <div className="flex flex-col items-center gap-4 px-6 py-6 text-center">
               <div className="flex h-14 w-14 items-center justify-center rounded-full bg-red-100 text-red-600">
                 <Trash2 className="h-6 w-6" />

@@ -90,7 +90,6 @@ class _ChildDashboardScreenState extends State<ChildDashboardScreen> {
       if (dashboardResponse.statusCode == 200) {
         final dashboardData = jsonDecode(dashboardResponse.body);
         final childData = dashboardData['child'] as Map<String, dynamic>? ?? {};
-        final isActive = childData['isActive'] ?? false;
         final photosRequested = childData['photosRequested'] ?? false;
 
         // Vérifier si l'accès doit être bloqué
@@ -137,6 +136,13 @@ class _ChildDashboardScreenState extends State<ChildDashboardScreen> {
           }
         });
 
+      } else if (dashboardResponse.statusCode == 401) {
+        // Token invalide ou expiré - ne pas déconnecter, juste afficher l'erreur
+        // L'utilisateur devra se reconnecter au prochain démarrage
+        final errorData = jsonDecode(dashboardResponse.body);
+        setState(() {
+          _error = errorData["message"] ?? "Session expirée. Veuillez redémarrer l'application.";
+        });
       } else {
         final errorData = jsonDecode(dashboardResponse.body);
         setState(() {
@@ -955,14 +961,23 @@ class _ChildDashboardScreenState extends State<ChildDashboardScreen> {
       final appointments = await ApiService.getAppointments(widget.childId);
       if (!mounted) return;
       
-      // Filtrer uniquement les rendez-vous à venir (date >= aujourd'hui)
+      // Filtrer uniquement les rendez-vous à venir
+      // Le backend attend 24h après la date prévue avant de marquer comme manqué
+      // Donc on inclut les rendez-vous d'aujourd'hui même si l'heure est passée
       final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
       final upcoming = appointments.where((apt) {
         final dateStr = apt['appointmentDate'] ?? apt['date'];
         if (dateStr == null || dateStr.isEmpty) return false;
         try {
           final date = DateTime.parse(dateStr);
-          return date.isAfter(now) || date.isAtSameMomentAs(now);
+          final appointmentDay = DateTime(date.year, date.month, date.day);
+          // Inclure les rendez-vous d'aujourd'hui et futurs
+          // Le backend gère déjà le fait d'attendre 24h avant de marquer comme manqué
+          final isToday = appointmentDay.year == today.year &&
+              appointmentDay.month == today.month &&
+              appointmentDay.day == today.day;
+          return date.isAfter(now) || isToday;
         } catch (e) {
           return false;
         }
@@ -1010,26 +1025,32 @@ class _ChildDashboardScreenState extends State<ChildDashboardScreen> {
     }
 
     final now = DateTime.now();
-    final isToday = appointmentDate.year == now.year &&
-        appointmentDate.month == now.month &&
-        appointmentDate.day == now.day;
-    final isTomorrow = appointmentDate.year == now.year &&
-        appointmentDate.month == now.month &&
-        appointmentDate.day == now.day + 1;
+    final today = DateTime(now.year, now.month, now.day);
+    final appointmentDay = DateTime(appointmentDate.year, appointmentDate.month, appointmentDate.day);
+    final tomorrow = today.add(const Duration(days: 1));
+    
+    final isToday = appointmentDay.year == today.year &&
+        appointmentDay.month == today.month &&
+        appointmentDay.day == today.day;
+    final isTomorrow = appointmentDay.year == tomorrow.year &&
+        appointmentDay.month == tomorrow.month &&
+        appointmentDay.day == tomorrow.day;
+
+    // Formater l'heure
+    final timeFormatter = DateFormat('HH:mm', 'fr_FR');
+    final timeStr = timeFormatter.format(appointmentDate);
 
     String dateLabel;
     if (isToday) {
-      dateLabel = "Aujourd'hui";
+      dateLabel = "Aujourd'hui à $timeStr";
     } else if (isTomorrow) {
-      dateLabel = "Demain";
+      dateLabel = "Demain à $timeStr";
     } else {
       final formatter = DateFormat('EEEE d MMMM', 'fr_FR');
       dateLabel = formatter.format(appointmentDate);
       dateLabel = dateLabel[0].toUpperCase() + dateLabel.substring(1);
+      dateLabel = '$dateLabel à $timeStr';
     }
-
-    final timeStr = appointment['appointmentTime'] ?? appointment['time'] ?? '';
-    final timeLabel = timeStr.isNotEmpty ? ' à $timeStr' : '';
 
     Color statusColor;
     IconData statusIcon;
@@ -1130,7 +1151,7 @@ class _ChildDashboardScreenState extends State<ChildDashboardScreen> {
                     const SizedBox(width: 4),
                     Flexible(
                       child: Text(
-                        '$dateLabel$timeLabel',
+                        dateLabel,
                         style: GoogleFonts.poppins(
                           fontSize: 13,
                           color: Colors.grey[600],

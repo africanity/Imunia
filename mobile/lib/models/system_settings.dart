@@ -32,8 +32,12 @@ class SystemSettings {
   });
 
   factory SystemSettings.fromJson(Map<String, dynamic> json) {
+    // Si appName est une chaîne vide, le traiter comme null
+    final appName = json['appName'] as String?;
+    final appNameValue = (appName != null && appName.trim().isNotEmpty) ? appName : null;
+    
     return SystemSettings(
-      appName: json['appName'] as String?,
+      appName: appNameValue,
       appSubtitle: json['appSubtitle'] as String?,
       logoUrl: json['logoUrl'] as String?,
       mobileBackgroundColor: json['mobileBackgroundColor'] as String?,

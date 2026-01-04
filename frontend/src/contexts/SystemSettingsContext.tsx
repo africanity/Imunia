@@ -41,8 +41,8 @@ export function SystemSettingsProvider({ children }: { children: ReactNode }) {
       setLoading(true);
       setError(null);
       const apiUrl =
-        process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:6000";
-      const res = await fetch(`${apiUrl}/api/system-settings`, {
+        process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5050";
+      const res = await fetch(`${apiUrl}/api/systemSettings`, {
         cache: "no-store",
       });
 

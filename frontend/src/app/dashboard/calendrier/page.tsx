@@ -154,6 +154,8 @@ export default function CalendrierVaccinalPage() {
   );
   const { accessToken, user } = useAuth();
   const isNational = user?.role === "NATIONAL";
+  const isSuperAdmin = user?.role === "SUPERADMIN";
+  const canManage = isNational || isSuperAdmin;
 
   const [entries, setEntries] = useState<CalendarEntry[]>([]);
   const [vaccines, setVaccines] = useState<VaccineOption[]>([]);
@@ -326,7 +328,7 @@ export default function CalendrierVaccinalPage() {
   ]);
 
   const fetchVaccines = useCallback(async () => {
-    if (!isNational || !accessToken) {
+    if (!canManage || !accessToken) {
       setVaccines([]);
       return;
     }
@@ -366,7 +368,7 @@ export default function CalendrierVaccinalPage() {
       console.error("Erreur chargement vaccins:", err);
       setVaccines([]);
     }
-  }, [accessToken, isNational]);
+  }, [accessToken, canManage]);
 
   useEffect(() => {
     fetchCalendar();
@@ -374,7 +376,7 @@ export default function CalendrierVaccinalPage() {
   }, [fetchCalendar, fetchVaccines]);
 
   const fetchDoseWarnings = useCallback(async () => {
-    if (!isNational || !accessToken) {
+    if (!canManage || !accessToken) {
       setDoseWarnings([]);
       setWarningsError(null);
       return;
@@ -412,7 +414,7 @@ export default function CalendrierVaccinalPage() {
     } finally {
       setWarningsLoading(false);
     }
-  }, [accessToken, isNational]);
+  }, [accessToken, canManage]);
 
   useEffect(() => {
     fetchDoseWarnings();
@@ -488,7 +490,7 @@ export default function CalendrierVaccinalPage() {
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!isNational || !accessToken) return;
+    if (!canManage || !accessToken) return;
 
     if (!specificAge.trim()) {
       setError("Veuillez saisir l'âge ciblé.");
@@ -582,7 +584,7 @@ export default function CalendrierVaccinalPage() {
   };
 
   const handleEdit = (entry: CalendarEntry) => {
-    if (!isNational) return;
+    if (!canManage) return;
     setEditForm({
       id: entry.id,
       description: entry.description ?? "",
@@ -646,7 +648,7 @@ export default function CalendrierVaccinalPage() {
 
   const handleEditSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!isNational || !accessToken) return;
+    if (!canManage || !accessToken) return;
 
     if (!editForm.id) {
       setEditError("Élément introuvable.");
@@ -750,7 +752,7 @@ export default function CalendrierVaccinalPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!isNational || !accessToken) return;
+    if (!canManage || !accessToken) return;
     if (!window.confirm("Confirmer la suppression ?")) return;
 
     try {
@@ -878,7 +880,7 @@ export default function CalendrierVaccinalPage() {
           </div>
         )}
 
-        {isNational && warningsError && (
+        {canManage && warningsError && (
           <div className="rounded-3xl border border-amber-200 bg-amber-50/80 p-4 text-sm text-amber-900">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
@@ -897,7 +899,7 @@ export default function CalendrierVaccinalPage() {
           </div>
         )}
 
-        {isNational && !warningsError && doseWarnings.length > 0 && (
+        {canManage && !warningsError && doseWarnings.length > 0 && (
           <div className="rounded-3xl border border-amber-200 bg-amber-50/80 p-4 text-sm text-amber-900">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
@@ -920,18 +922,21 @@ export default function CalendrierVaccinalPage() {
           </div>
         )}
 
-        {isNational && (
-          <div className="rounded-3xl border border-slate-200 bg-white p-0 shadow-sm">
+        {canManage && (
+          <div className="rounded-3xl border border-blue-200 bg-blue-50/30 p-0 shadow-lg">
             <button
               type="button"
               onClick={() => setCreateOpen((prev) => !prev)}
-              className="flex w-full items-center justify-between rounded-3xl border-b border-slate-100 bg-white px-6 py-4 text-left transition hover:bg-slate-50"
+              className="flex w-full items-center justify-between rounded-3xl bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-5 text-left transition hover:from-blue-700 hover:to-blue-800 shadow-md"
             >
-              <span className="text-lg font-semibold text-slate-900">
-                Ajouter une entrée au calendrier
-              </span>
+              <div className="flex items-center gap-3">
+                <Plus className="h-5 w-5 text-white" />
+                <span className="text-lg font-bold text-white">
+                  Ajouter une entrée au calendrier
+                </span>
+              </div>
               <ChevronDown
-                className={`h-5 w-5 text-slate-500 transition-transform ${
+                className={`h-5 w-5 text-white transition-transform ${
                   createOpen ? "rotate-180" : ""
                 }`}
               />
@@ -1219,7 +1224,7 @@ export default function CalendrierVaccinalPage() {
                           </p>
                         )}
                       </div>
-                      {isNational && (
+                      {canManage && (
                         <div className="flex gap-2">
                           <button
                             type="button"
@@ -1245,9 +1250,9 @@ export default function CalendrierVaccinalPage() {
           )}
         </div>
       </div>
-      {isNational && warningModalOpen && (
+      {canManage && warningModalOpen && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/70 px-4 py-8">
-          <div className="w-full max-w-2xl rounded-3xl bg-white p-6 shadow-2xl">
+          <div className="w-full max-w-[95vw] md:max-w-2xl rounded-3xl bg-white p-4 md:p-6 shadow-2xl">
             <div className="flex items-center justify-between gap-4">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -1300,11 +1305,11 @@ export default function CalendrierVaccinalPage() {
           </div>
         </div>
       )}
-      {isNational && editModalOpen && (
+      {canManage && editModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur px-4 py-8">
           <form
             onSubmit={handleEditSubmit}
-            className="relative flex h-[90vh] max-h-[90vh] w-full max-w-3xl flex-col rounded-3xl bg-white shadow-2xl"
+            className="relative flex h-[90vh] max-h-[90vh] w-full max-w-[95vw] md:max-w-3xl flex-col rounded-3xl bg-white shadow-2xl"
           >
             {/* Header fixe */}
             <div className="flex-shrink-0 border-b border-slate-200 p-6">

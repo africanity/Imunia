@@ -20,12 +20,26 @@ jest.mock('../../src/config/prismaClient', () => ({
   },
 }));
 
+jest.mock('../../src/services/eventLogService', () => ({
+  logEventAsync: jest.fn(),
+}));
+
+// Import the mocked logEventAsync and make it globally available
+const { logEventAsync } = require('../../src/services/eventLogService');
+global.logEventAsync = logEventAsync;
+
 describe('adviceController', () => {
   let req, res, next;
 
   beforeEach(() => {
     req = {
-      user: {},
+      user: {
+        id: 'user-1',
+        firstName: 'Test',
+        lastName: 'User',
+        email: 'test@example.com',
+        role: 'NATIONAL',
+      },
       body: {},
       params: {},
       query: {},

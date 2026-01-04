@@ -19,6 +19,18 @@ class ApiService {
   // Gestion des erreurs HTTP
   static void _handleHttpError(http.Response response) {
     if (response.statusCode >= 400) {
+      // Pour les erreurs 401 (token invalide/expiré), on ne déconnecte pas automatiquement
+      // Le token sera vérifié au prochain démarrage de l'app
+      if (response.statusCode == 401) {
+        try {
+          final error = json.decode(response.body);
+          throw Exception(error['message'] ?? 'Token invalide ou expiré');
+        } catch (e) {
+          throw Exception('Token invalide ou expiré');
+        }
+      }
+      
+      // Pour les autres erreurs, on lance une exception normale
       try {
         final error = json.decode(response.body);
         throw Exception(error['message'] ?? 'Erreur API: ${response.statusCode}');

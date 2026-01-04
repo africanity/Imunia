@@ -359,7 +359,7 @@ export default function ConseilsPage() {
 
       {isNational && modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl bg-white shadow-2xl">
+          <div className="w-full max-w-[95vw] md:max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl bg-white shadow-2xl">
             <form onSubmit={handleSubmit} className="space-y-4 p-6">
               <h3 className="text-lg font-semibold text-slate-900">
                 {modalMode === "edit" ? "Modifier le conseil" : "Nouveau conseil"}
@@ -522,7 +522,7 @@ export default function ConseilsPage() {
 
       {deletingId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-          <div className="w-full max-w-md rounded-3xl bg-white shadow-2xl p-6">
+          <div className="w-full max-w-[95vw] md:max-w-md rounded-3xl bg-white shadow-2xl p-4 md:p-6">
             <h3 className="text-lg font-semibold text-slate-900 mb-2">
               Supprimer le conseil
             </h3>

@@ -366,7 +366,7 @@ export default function ChildDocumentsModal({
   return (
     <>
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 px-4 py-8">
-        <div className="relative max-h-[90vh] w-full max-w-3xl rounded-3xl bg-white shadow-2xl">
+        <div className="relative max-h-[90vh] w-full max-w-[95vw] md:max-w-3xl rounded-3xl bg-white shadow-2xl">
           <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
             <div>
               <h2 className="text-xl font-semibold text-slate-900">
@@ -564,7 +564,7 @@ export default function ChildDocumentsModal({
       {/* Modal de visualisation */}
       {viewingProof && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/80 px-4 py-8">
-          <div className="relative max-h-[90vh] w-full max-w-4xl rounded-3xl bg-white shadow-2xl">
+          <div className="relative max-h-[90vh] w-full max-w-[95vw] md:max-w-4xl rounded-3xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">

@@ -17,6 +17,11 @@ router.get("/health-center/agents", requireAuth, userController.getHealthCenterA
 router.get("/me", requireAuth, userController.getSelf);
 router.patch("/me", requireAuth, userController.updateSelf);
 router.post("/me/verify-email", requireAuth, userController.verifyEmail);
+router.post("/me/request-email-change", requireAuth, userController.requestEmailChange);
+router.post("/me/verify-email-change", requireAuth, userController.verifyEmailChange);
+router.post("/me/request-password-change", requireAuth, userController.requestPasswordChange);
+router.post("/me/verify-password-code", requireAuth, userController.verifyPasswordCode);
+router.post("/me/change-password", requireAuth, userController.changePassword);
 
 router.get("/:id/delete-summary", requireAuth, userController.getUserDeletionSummary);
 router.delete("/:id", requireAuth, userController.deleteUser);

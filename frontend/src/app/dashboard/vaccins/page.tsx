@@ -33,6 +33,8 @@ type VaccinesResponse =
 export default function VaccinsPage() {
   const { accessToken, user } = useAuth();
   const isNational = user?.role === "NATIONAL";
+  const isSuperAdmin = user?.role === "SUPERADMIN";
+  const canManage = isNational || isSuperAdmin;
   const [vaccines, setVaccines] = useState<Vaccine[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -90,7 +92,7 @@ export default function VaccinsPage() {
   const totalVaccines = useMemo(() => vaccines.length, [vaccines]);
 
   const openCreateModal = () => {
-    if (!isNational) return;
+    if (!canManage) return;
     setModalMode("create");
     setEditingId(null);
     setForm({ name: "", description: "", dosesRequired: "", gender: "" });
@@ -98,7 +100,7 @@ export default function VaccinsPage() {
   };
 
   const openEditModal = (vaccine: Vaccine) => {
-    if (!isNational) return;
+    if (!canManage) return;
     setModalMode("edit");
     setEditingId(vaccine.id);
     setForm({
@@ -118,7 +120,7 @@ export default function VaccinsPage() {
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!isNational || !accessToken) return;
+    if (!canManage || !accessToken) return;
 
     if (!form.name.trim() || !form.description.trim() || !form.dosesRequired.trim()) {
       setError("Veuillez remplir tous les champs");
@@ -168,7 +170,7 @@ export default function VaccinsPage() {
   };
 
   const handleDelete = async () => {
-    if (!isNational || !accessToken || !deletingId) return;
+    if (!canManage || !accessToken || !deletingId) return;
 
     try {
       setDeleting(true);
@@ -217,7 +219,7 @@ export default function VaccinsPage() {
             </p>
           </div>
 
-          {isNational && (
+          {canManage && (
             <button
               type="button"
               onClick={openCreateModal}
@@ -282,7 +284,7 @@ export default function VaccinsPage() {
                   >
                     Voir les stocks
                   </button>
-                  {isNational && (
+                  {canManage && (
                     <>
                       <button
                         type="button"
@@ -307,9 +309,9 @@ export default function VaccinsPage() {
         </div>
       </div>
 
-      {isNational && modalOpen && (
+      {canManage && modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-          <div className="w-full max-w-lg rounded-3xl bg-white shadow-2xl">
+          <div className="w-full max-w-[95vw] md:max-w-lg rounded-3xl bg-white shadow-2xl">
             <form onSubmit={handleSubmit} className="space-y-4 p-6">
               <h3 className="text-lg font-semibold text-slate-900">
                 {modalMode === "edit" ? "Modifier le vaccin" : "Nouveau vaccin"}
@@ -390,7 +392,7 @@ export default function VaccinsPage() {
 
       {stockModalId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-          <div className="w-full max-w-xl rounded-3xl bg-white shadow-2xl">
+          <div className="w-full max-w-[95vw] md:max-w-xl rounded-3xl bg-white shadow-2xl">
             <div className="space-y-5 p-6">
               {(() => {
                 const vaccine = vaccines.find((item) => item.id === stockModalId);
@@ -461,9 +463,9 @@ export default function VaccinsPage() {
         </div>
       )}
 
-      {isNational && deletingId && (
+      {canManage && deletingId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-          <div className="w-full max-w-md rounded-3xl bg-white shadow-2xl">
+          <div className="w-full max-w-[95vw] md:max-w-md rounded-3xl bg-white shadow-2xl">
             <div className="space-y-4 p-6">
               <h3 className="text-lg font-semibold text-slate-900">
                 Supprimer le vaccin ?

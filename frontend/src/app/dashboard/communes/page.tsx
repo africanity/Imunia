@@ -10,7 +10,6 @@ import {
   MapPinned,
   Pencil,
   Plus,
-  RefreshCw,
   Trash2,
   X,
 } from "lucide-react";
@@ -370,44 +369,53 @@ export default function CommunesPage() {
       );
     }
 
-    return communes.map((commune, index) => (
-      <div
-        key={commune.id}
-        className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-md"
-        style={{ animationDelay: `${index * 40}ms` }}
-      >
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-semibold text-slate-900">{commune.name}</h3>
-            <p className="text-sm text-slate-500">
-              Région : {commune.region?.name ?? "Non renseignée"}
-            </p>
+    return communes.map((commune, index) => {
+      const initials = commune.name.substring(0, 2).toUpperCase();
+      
+      return (
+        <div
+          key={commune.id}
+          className="flex h-full flex-col rounded-3xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-md"
+          style={{ animationDelay: `${index * 40}ms` }}
+        >
+          <div className="flex items-start gap-4">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-blue-400 to-blue-500 text-lg font-bold text-white shadow-sm ring-2 ring-white">
+              {initials}
+            </div>
+            <div className="flex-1">
+              <h3 className="text-lg font-semibold text-slate-900">{commune.name}</h3>
+              <div className="mt-1 flex items-center gap-2 text-sm text-slate-600">
+                <MapPinned className="h-4 w-4" />
+                <span>
+                  Région: {commune.region?.name ?? "Non renseignée"}
+                </span>
+              </div>
+            </div>
           </div>
+
           {(isRegional || isNational) && (
-            <div className="flex gap-2">
+            <div className="mt-4 flex justify-end gap-2 border-t border-slate-100 pt-4">
               <button
                 type="button"
                 onClick={() => openEditModal(commune)}
-                className="rounded-xl bg-blue-50 px-3 py-2 text-sm font-medium text-blue-600 transition hover:bg-blue-100"
+                className="rounded-lg bg-blue-50 p-2 text-blue-600 transition hover:bg-blue-100"
+                title="Modifier"
               >
-                <span className="flex items-center gap-2">
-                  <Pencil className="h-4 w-4" /> Modifier
-                </span>
+                <Pencil className="h-4 w-4" />
               </button>
               <button
                 type="button"
                 onClick={() => openDeleteModal(commune)}
-                className="rounded-xl bg-red-50 px-3 py-2 text-sm font-medium text-red-600 transition hover:bg-red-100"
+                className="rounded-lg bg-red-50 p-2 text-red-600 transition hover:bg-red-100"
+                title="Supprimer"
               >
-                <span className="flex items-center gap-2">
-                  <Trash2 className="h-4 w-4" /> Supprimer
-                </span>
+                <Trash2 className="h-4 w-4" />
               </button>
             </div>
           )}
         </div>
-      </div>
-    ));
+      );
+    });
   }, [communes, loading, error, isRegional, isNational, openDeleteModal]);
 
   const communeDeleteSummaryItems = useMemo(() => {
@@ -446,13 +454,6 @@ export default function CommunesPage() {
               </p>
             </div>
             <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={fetchCommunes}
-                className="flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-blue-400 hover:text-blue-600"
-              >
-                <RefreshCw className="h-4 w-4" /> Actualiser
-              </button>
               {(isRegional || isNational) && (
                 <button
                   type="button"
@@ -481,13 +482,13 @@ export default function CommunesPage() {
             </div>
           )}
 
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">{cards}</div>
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">{cards}</div>
         </div>
       </DashboardShell>
 
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-          <div className="w-full max-w-md rounded-3xl bg-white shadow-2xl">
+          <div className="w-full max-w-[95vw] md:max-w-md rounded-3xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
               <div className="flex items-center gap-2 text-lg font-semibold text-slate-800">
                 <MapPinned className="h-5 w-5 text-blue-600" />
@@ -551,7 +552,7 @@ export default function CommunesPage() {
 
       {deleteTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-          <div className="w-full max-w-md rounded-3xl bg-white shadow-2xl">
+          <div className="w-full max-w-[95vw] md:max-w-md rounded-3xl bg-white shadow-2xl">
             <div className="flex flex-col items-center gap-4 px-6 py-6 text-center">
               <div className="flex h-14 w-14 items-center justify-center rounded-full bg-red-100 text-red-600">
                 <Trash2 className="h-6 w-6" />

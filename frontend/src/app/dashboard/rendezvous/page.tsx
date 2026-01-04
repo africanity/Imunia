@@ -132,6 +132,7 @@ export default function RendezvousPage() {
   const [scheduleRequestId, setScheduleRequestId] = useState<string | null>(null);
   const [scheduleRequestDate, setScheduleRequestDate] = useState<string>("");
   const [scheduleRequestLoading, setScheduleRequestLoading] = useState(false);
+  const [deletingRequestId, setDeletingRequestId] = useState<string | null>(null);
   const [agents, setAgents] = useState<Array<{ id: string; firstName: string; lastName: string; email: string; agentLevel: string | null }>>([]);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [loadingAgents, setLoadingAgents] = useState(false);
@@ -293,6 +294,36 @@ export default function RendezvousPage() {
       setError(err instanceof Error ? err.message : "Erreur lors de la programmation");
     } finally {
       setScheduleRequestLoading(false);
+    }
+  };
+
+  const handleDeleteRequest = async (requestId: string) => {
+    if (!accessToken || !canManage) return;
+
+    if (!confirm("Êtes-vous sûr de vouloir supprimer cette demande ? Le parent sera notifié que sa demande a été refusée.")) {
+      return;
+    }
+
+    try {
+      setDeletingRequestId(requestId);
+      const response = await fetch(`${API_URL}/api/vaccine-requests/${requestId}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.message ?? "Impossible de supprimer la demande.");
+      }
+
+      await fetchRequests();
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erreur lors de la suppression");
+    } finally {
+      setDeletingRequestId(null);
     }
   };
 
@@ -789,7 +820,7 @@ export default function RendezvousPage() {
                   <p className="text-sm uppercase tracking-wide text-slate-500">
                     Rendez-vous programmé
                   </p>
-                  <h2 className="mt-1 text-lg font-semibold text-slate-900">
+                  <h2 className="mt-1 text-base md:text-lg font-semibold text-slate-900">
                     {childName}
                   </h2>
                   <p className="mt-1 text-sm text-slate-600">
@@ -845,24 +876,33 @@ export default function RendezvousPage() {
                       <Trash2 className="h-4 w-4" />
                       Annuler
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => handleComplete(entry.id)}
-                      disabled={completingId === entry.id}
-                      className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {completingId === entry.id ? (
-                        <>
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          Validation…
-                        </>
-                      ) : (
-                        <>
-                          <CalendarCheck className="h-4 w-4" />
-                          Marquer effectué
-                        </>
-                      )}
-                    </button>
+                    {(() => {
+                      const appointmentDate = new Date(entry.scheduledFor);
+                      const now = new Date();
+                      const isAppointmentTimePassed = appointmentDate <= now;
+                      
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => handleComplete(entry.id)}
+                          disabled={completingId === entry.id || !isAppointmentTimePassed}
+                          className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+                          title={!isAppointmentTimePassed ? "Vous ne pouvez marquer comme effectué qu'à partir de la date et heure du rendez-vous" : ""}
+                        >
+                          {completingId === entry.id ? (
+                            <>
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              Validation…
+                            </>
+                          ) : (
+                            <>
+                              <CalendarCheck className="h-4 w-4" />
+                              Marquer effectué
+                            </>
+                          )}
+                        </button>
+                      );
+                    })()}
                   </div>
                 ) : (
                   <span className="text-xs italic text-slate-400">
@@ -893,7 +933,7 @@ export default function RendezvousPage() {
           <p className="text-sm font-medium uppercase tracking-wide text-emerald-500">
             Suivi vaccinal
           </p>
-          <h1 className="mt-1 text-2xl font-semibold text-slate-900">
+          <h1 className="mt-1 text-xl md:text-2xl font-semibold text-slate-900">
             Rendez-vous et demandes
           </h1>
           <p className="mt-1 text-sm text-slate-600">
@@ -1080,7 +1120,7 @@ export default function RendezvousPage() {
                       <p className="text-sm uppercase tracking-wide text-blue-600">
                         Demande de vaccination
                       </p>
-                      <h2 className="mt-1 text-lg font-semibold text-slate-900">{childName}</h2>
+                      <h2 className="mt-1 text-base md:text-lg font-semibold text-slate-900">{childName}</h2>
                       <p className="mt-1 text-sm text-slate-600">{vaccineName}</p>
                       <p className="mt-1 text-xs text-slate-500">{doseLabel}</p>
                       <p className="mt-1 text-sm text-slate-500">
@@ -1140,7 +1180,27 @@ export default function RendezvousPage() {
                       )}
                     </div>
                   </div>
-                  <div className="mt-3 flex items-center justify-end">
+                  <div className="mt-3 flex items-center justify-end gap-2">
+                    {canManage && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteRequest(request.id)}
+                        disabled={deletingRequestId === request.id}
+                        className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {deletingRequestId === request.id ? (
+                          <>
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Suppression…
+                          </>
+                        ) : (
+                          <>
+                            <Trash2 className="h-4 w-4" />
+                            Supprimer
+                          </>
+                        )}
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => handleScheduleRequest(request.id)}

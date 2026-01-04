@@ -3,9 +3,12 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'child_selection_screen.dart';
 import '../child/child_dashboard_screen.dart';
 import '../../core/config/api_config.dart';
+import '../../services/settings_service.dart';
+import '../../models/system_settings.dart';
 
 class PinLoginScreen extends StatefulWidget {
   const PinLoginScreen({super.key});
@@ -25,6 +28,7 @@ class _PinLoginScreenState extends State<PinLoginScreen>
   bool isLoading = false;
   String? error;
   bool _phoneHasFocus = false;
+  SystemSettings? _settings;
 
   final storage = const FlutterSecureStorage();
 
@@ -37,9 +41,23 @@ class _PinLoginScreenState extends State<PinLoginScreen>
   late Animation<Offset> _slideAnimation;
   late Animation<double> _logoAnimation;
 
+  Future<void> _loadSettings() async {
+    try {
+      final settings = await SettingsService.getSystemSettings();
+      if (mounted) {
+        setState(() {
+          _settings = settings;
+        });
+      }
+    } catch (e) {
+      // Ignore errors, use default
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+    _loadSettings();
 
     phoneFocus.addListener(() {
       setState(() => _phoneHasFocus = phoneFocus.hasFocus);
@@ -76,6 +94,38 @@ class _PinLoginScreenState extends State<PinLoginScreen>
 
     _fadeController.forward();
     _slideController.forward();
+  }
+
+  Widget _buildLogo(double size) {
+    if (_settings?.logoUrl != null) {
+      // Construire l'URL complète du logo
+      final logoUrl = _settings!.logoUrl!;
+      final fullUrl = logoUrl.startsWith('http')
+          ? logoUrl
+          : '${ApiConfig.baseUrl}$logoUrl';
+      
+      return CachedNetworkImage(
+        imageUrl: fullUrl,
+        width: size,
+        height: size,
+        fit: BoxFit.contain,
+        placeholder: (context, url) => SizedBox(
+          width: size,
+          height: size,
+          child: const CircularProgressIndicator(),
+        ),
+        errorWidget: (context, url, error) => Image.asset(
+          "assets/images/logo_vacxcare.png",
+          width: size,
+          height: size,
+        ),
+      );
+    }
+    return Image.asset(
+      "assets/images/logo_vacxcare.png",
+      width: size,
+      height: size,
+    );
   }
 
   @override
@@ -241,18 +291,14 @@ class _PinLoginScreenState extends State<PinLoginScreen>
                           ),
                         ],
                       ),
-                      child: Image.asset(
-                        "assets/images/logo_vacxcare.png",
-                        width: 120,
-                        height: 120,
-                      ),
+                      child: _buildLogo(120),
                     ),
                   ),
 
                   const SizedBox(height: 20),
 
                   Text(
-                    "Imunia",
+                    _settings?.appName ?? "Imunia",
                     style: GoogleFonts.poppins(
                       fontSize: 36,
                       fontWeight: FontWeight.bold,

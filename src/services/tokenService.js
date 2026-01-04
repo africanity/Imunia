@@ -40,6 +40,27 @@ const decodeAccessToken = (token) => {
   }
 };
 
+const PASSWORD_RESET_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET || process.env.JWT_SECRET;
+const PASSWORD_RESET_TOKEN_TTL = "15m"; // 15 minutes
+
+const generatePasswordResetToken = (userId) => {
+  return jwt.sign({ userId, type: "password-reset" }, PASSWORD_RESET_TOKEN_SECRET, {
+    expiresIn: PASSWORD_RESET_TOKEN_TTL,
+  });
+};
+
+const verifyPasswordResetToken = (token) => {
+  try {
+    const decoded = jwt.verify(token, PASSWORD_RESET_TOKEN_SECRET);
+    if (decoded.type !== "password-reset") {
+      throw new Error("Token invalide");
+    }
+    return decoded;
+  } catch (error) {
+    throw new Error("Token invalide ou expiré");
+  }
+};
+
 module.exports = {
   signAccessToken,
   verifyAccessToken,
@@ -48,4 +69,6 @@ module.exports = {
   generateActivationToken,
   generateEmailCode,
   decodeAccessToken,
+  generatePasswordResetToken,
+  verifyPasswordResetToken,
 };

@@ -5,9 +5,7 @@ import {
   AlertCircle,
   MapPin,
   Mail,
-  Phone,
   Plus,
-  RefreshCw,
   Trash2,
   Users,
   X,
@@ -31,7 +29,6 @@ type RawUser = {
   role: string;
   firstName?: string | null;
   lastName?: string | null;
-  phone?: string | null;
   regionId?: string | null;
   districtId?: string | null;
   healthCenterId?: string | null;
@@ -43,7 +40,6 @@ type ManagedUser = {
   email: string;
   firstName: string;
   lastName: string;
-  phone: string;
   scopeId: string | null;
   agentLevel?: string | null;
 };
@@ -52,7 +48,6 @@ type ManagedForm = {
   firstName: string;
   lastName: string;
   email: string;
-  phone: string;
   scopeId: string;
 };
 
@@ -60,7 +55,6 @@ const EMPTY_FORM: ManagedForm = {
   firstName: "",
   lastName: "",
   email: "",
-  phone: "",
   scopeId: "",
 };
 
@@ -264,8 +258,9 @@ export default function ManagedUsersPage() {
       ? "Nouvel agent"
       : "Nouvel agent staff";
 
-  const disableIdentityFields =
-    formMode === "edit" && !(isNational || isRegional || isAgentAdmin);
+  // En mode édition, tous les rôles (National, Regional, District, AgentAdmin) ne peuvent modifier que l'entité
+  // Les informations personnelles sont grisées
+  const disableIdentityFields = formMode === "edit";
 
   useEffect(() => {
     if (!showScopeSelect) {
@@ -367,7 +362,6 @@ export default function ManagedUsersPage() {
           email: entry.email,
           firstName: entry.firstName ?? "",
           lastName: entry.lastName ?? "",
-          phone: entry.phone ?? "",
           scopeId: normalizedScopeId,
           agentLevel: entry.role === "AGENT" ? entry.agentLevel ?? undefined : undefined,
         };
@@ -459,7 +453,6 @@ export default function ManagedUsersPage() {
       firstName: userToEdit.firstName,
       lastName: userToEdit.lastName,
       email: userToEdit.email,
-      phone: userToEdit.phone,
       scopeId: userToEdit.scopeId ?? (showScopeSelect ? "" : defaultScopeId),
     });
     setShowFormModal(true);
@@ -510,7 +503,6 @@ export default function ManagedUsersPage() {
           firstName: form.firstName.trim(),
           lastName: form.lastName.trim(),
           email: form.email.trim(),
-          phone: form.phone.trim(),
           [scopeField]: targetScopeId,
         };
 
@@ -685,33 +677,25 @@ export default function ManagedUsersPage() {
               <Mail className="h-4 w-4" />
               <span className="truncate">{item.email}</span>
             </div>
-            {item.phone && (
-              <div className="flex items-center gap-2">
-                <Phone className="h-4 w-4" />
-                <span>{item.phone}</span>
-              </div>
-            )}
           </div>
 
           {canManage && (
-            <div className="mt-4 flex gap-2 border-t border-slate-100 pt-4">
+            <div className="mt-4 flex justify-end gap-2 border-t border-slate-100 pt-4">
               <button
                 type="button"
                 onClick={() => openEditModal(item)}
-                className="flex-1 rounded-xl bg-blue-50 px-3 py-2 text-sm font-medium text-blue-600 transition hover:bg-blue-100"
+                className="rounded-lg bg-blue-50 p-2 text-blue-600 transition hover:bg-blue-100"
+                title="Modifier"
               >
-                <span className="flex items-center justify-center gap-2">
-                  <Pencil className="h-4 w-4" /> Modifier
-                </span>
+                <Pencil className="h-4 w-4" />
               </button>
               <button
                 type="button"
                 onClick={() => openDeleteModal(item)}
-                className="flex-1 rounded-xl bg-red-50 px-3 py-2 text-sm font-medium text-red-600 transition hover:bg-red-100"
+                className="rounded-lg bg-red-50 p-2 text-red-600 transition hover:bg-red-100"
+                title="Supprimer"
               >
-                <span className="flex items-center justify-center gap-2">
-                  <Trash2 className="h-4 w-4" /> Supprimer
-                </span>
+                <Trash2 className="h-4 w-4" />
               </button>
             </div>
           )}
@@ -790,13 +774,6 @@ export default function ManagedUsersPage() {
               <p className="text-sm text-slate-500">{description}</p>
             </div>
             <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={fetchUsers}
-                className="flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-blue-400 hover:text-blue-600"
-              >
-                <RefreshCw className="h-4 w-4" /> Actualiser
-              </button>
               {canManage && (
                 <button
                   type="button"
@@ -831,7 +808,7 @@ export default function ManagedUsersPage() {
 
       {showFormModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-          <div className="w-full max-w-lg rounded-3xl bg-white shadow-2xl">
+          <div className="w-full max-w-[95vw] md:max-w-lg rounded-3xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
               <div className="flex items-center gap-2 text-lg font-semibold text-slate-800">
                 <Users className="h-5 w-5 text-blue-600" />
@@ -890,21 +867,6 @@ export default function ManagedUsersPage() {
               </div>
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div>
-                  <label className="text-sm font-medium text-slate-600">Téléphone</label>
-                  <input
-                    type="tel"
-                    value={form.phone}
-                    onChange={(event) => {
-                      setForm((prev) => ({ ...prev, phone: event.target.value }));
-                      setModalError(null);
-                    }}
-                    disabled={disableIdentityFields}
-                    className={`mt-1 w-full rounded-xl border border-slate-200 px-4 py-3 text-slate-800 transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 ${
-                      disableIdentityFields ? "bg-slate-100 text-slate-500" : ""
-                    }`}
-                  />
-                </div>
                 <div>
                   <label className="text-sm font-medium text-slate-600">Email</label>
                   <input
@@ -976,7 +938,7 @@ export default function ManagedUsersPage() {
 
       {deleteTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-          <div className="w-full max-w-md rounded-3xl bg-white shadow-2xl">
+          <div className="w-full max-w-[95vw] md:max-w-md rounded-3xl bg-white shadow-2xl">
             <div className="flex flex-col items-center gap-4 px-6 py-6 text-center">
               <div className="flex h-14 w-14 items-center justify-center rounded-full bg-red-100 text-red-600">
                 <Trash2 className="h-6 w-6" />

@@ -174,7 +174,7 @@ describe('dashboardController', () => {
           select: expect.objectContaining({
             _count: expect.objectContaining({
               select: expect.objectContaining({
-                completedByChildren: true,
+                completedByChildren: expect.anything(),
               }),
             }),
           }),

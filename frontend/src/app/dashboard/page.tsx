@@ -176,6 +176,7 @@ export default function DashboardPage() {
   const [globalFilter, setGlobalFilter] = useState<AgentPeriod>("week");
   const [selectedDate, setSelectedDate] = useState("");
   const role = user?.role?.toUpperCase() ?? "";
+  const isSuperAdmin = role === "SUPERADMIN";
   const isRegional = role === "REGIONAL";
   const isNational = role === "NATIONAL";
   const isDistrict = role === "DISTRICT";
@@ -185,9 +186,97 @@ export default function DashboardPage() {
   const districtName = (user?.districtName ?? "").trim();
   const centerLabel = (user?.healthCenterName ?? "").trim();
 
+  // Filtres pour superadmin
+  const [superAdminFilter, setSuperAdminFilter] = useState<{
+    type: "all" | "region" | "district" | "healthcenter";
+    regionId?: string;
+    districtId?: string;
+    healthCenterId?: string;
+  }>({ type: "all" });
+  const [allRegions, setAllRegions] = useState<{ id: string; name: string }[]>([]);
+  const [filterDistricts, setFilterDistricts] = useState<{ id: string; name: string }[]>([]);
+  const [filterHealthCenters, setFilterHealthCenters] = useState<{
+    id: string;
+    name: string;
+  }[]>([]);
+
+  // Charger les régions pour les filtres superadmin
+  useEffect(() => {
+    const fetchAllRegions = async () => {
+      if (!isSuperAdmin || !accessToken) return;
+      try {
+        const res = await fetch(`${API_URL}/api/region`, {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const regionsList = Array.isArray(data) ? data : data.regions || [];
+          setAllRegions(regionsList.map((r: any) => ({ id: r.id, name: r.name })));
+        }
+      } catch (err) {
+        console.error("Erreur chargement régions:", err);
+      }
+    };
+    fetchAllRegions();
+  }, [isSuperAdmin, accessToken]);
+
+  // Charger les districts quand une région est sélectionnée
+  useEffect(() => {
+    const fetchDistricts = async () => {
+      if (!isSuperAdmin || !accessToken || !superAdminFilter.regionId) {
+        setFilterDistricts([]);
+        return;
+      }
+      try {
+        const res = await fetch(`${API_URL}/api/district?regionId=${superAdminFilter.regionId}`, {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const districtsList = Array.isArray(data) ? data : data.districts || data.items || [];
+          setFilterDistricts(districtsList.map((d: any) => ({ id: d.id, name: d.name })));
+        }
+      } catch (err) {
+        console.error("Erreur chargement districts:", err);
+        setFilterDistricts([]);
+      }
+    };
+    fetchDistricts();
+  }, [isSuperAdmin, accessToken, superAdminFilter.regionId]);
+
+  // Charger les centres de santé quand un district est sélectionné
+  useEffect(() => {
+    const fetchHealthCenters = async () => {
+      if (!isSuperAdmin || !accessToken || !superAdminFilter.districtId) {
+        setFilterHealthCenters([]);
+        return;
+      }
+      try {
+        const res = await fetch(`${API_URL}/api/healthCenter?districtId=${superAdminFilter.districtId}`, {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const centersList = Array.isArray(data) ? data : data.healthCenters || data.items || [];
+          setFilterHealthCenters(centersList.map((c: any) => ({ id: c.id, name: c.name })));
+        }
+      } catch (err) {
+        console.error("Erreur chargement centres:", err);
+        setFilterHealthCenters([]);
+      }
+    };
+    fetchHealthCenters();
+  }, [isSuperAdmin, accessToken, superAdminFilter.districtId]);
+
   useEffect(() => {
     const loadChildrenStats = async () => {
-      if (!accessToken || isNational || isRegional || isDistrict) {
+      if (!accessToken || isNational || isRegional || isDistrict || isSuperAdmin) {
         setLoading(false);
         return;
       }
@@ -226,11 +315,11 @@ export default function DashboardPage() {
     };
 
     loadChildrenStats();
-  }, [accessToken, isDistrict, isNational, isRegional]);
+  }, [accessToken, isDistrict, isNational, isRegional, isSuperAdmin]);
 
   useEffect(() => {
     const fetchNationalStats = async () => {
-      if (!isNational || !accessToken) {
+      if ((!isNational && !isSuperAdmin) || !accessToken) {
         setNationalStats(null);
         setNationalError(null);
         setNationalLoading(false);
@@ -241,7 +330,20 @@ export default function DashboardPage() {
         setNationalLoading(true);
         setNationalError(null);
 
-        const res = await fetch(`${API_URL}/api/dashboard/national`, {
+        // Construire les query params pour les filtres superadmin
+        const params = new URLSearchParams();
+        if (isSuperAdmin && superAdminFilter.type !== "all") {
+          if (superAdminFilter.healthCenterId) {
+            params.append("healthCenterId", superAdminFilter.healthCenterId);
+          } else if (superAdminFilter.districtId) {
+            params.append("districtId", superAdminFilter.districtId);
+          } else if (superAdminFilter.regionId) {
+            params.append("regionId", superAdminFilter.regionId);
+          }
+        }
+
+        const url = `${API_URL}/api/dashboard/national${params.toString() ? `?${params.toString()}` : ""}`;
+        const res = await fetch(url, {
           headers: {
             ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
           },
@@ -265,7 +367,7 @@ export default function DashboardPage() {
     };
 
     fetchNationalStats();
-  }, [accessToken, isNational, role]);
+  }, [accessToken, isNational, isSuperAdmin, role, superAdminFilter.type, superAdminFilter.regionId, superAdminFilter.districtId, superAdminFilter.healthCenterId]);
 
   useEffect(() => {
     const fetchRegionalStats = async () => {
@@ -411,7 +513,7 @@ export default function DashboardPage() {
   const agentCoverageData = agentStats?.coverageByVaccine ?? [];
   const agentTopLateChildren = agentStats?.topLateChildren ?? [];
 
-  if (isNational) {
+  if (isNational || isSuperAdmin) {
     if (nationalLoading) {
       return (
         <DashboardShell active="/dashboard">
@@ -477,13 +579,97 @@ export default function DashboardPage() {
       <DashboardShell active="/dashboard">
         <div className="animate-fadeIn">
           <div className="mb-8">
-            <h1 className="mb-2 text-3xl font-bold text-gray-900">
-              Tableau de bord National
+            <h1 className="mb-2 text-2xl md:text-3xl font-bold text-gray-900">
+              {isSuperAdmin ? "Tableau de bord Superadmin" : "Tableau de bord National"}
             </h1>
             <p className="text-gray-600">
-              Vue d'ensemble des statistiques nationales de vaccination
+              {isSuperAdmin
+                ? "Vue d'ensemble des statistiques avec filtres"
+                : "Vue d'ensemble des statistiques nationales de vaccination"}
             </p>
           </div>
+
+          {/* Filtres pour superadmin */}
+          {isSuperAdmin && (
+            <div className="mb-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <h3 className="mb-4 text-lg font-semibold text-slate-900">Filtres</h3>
+              <div className="grid gap-4 md:grid-cols-3">
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-slate-600">Région</label>
+                  <select
+                    value={superAdminFilter.regionId || ""}
+                    onChange={(e) => {
+                      setSuperAdminFilter({
+                        type: e.target.value ? "region" : "all",
+                        regionId: e.target.value || undefined,
+                        districtId: undefined,
+                        healthCenterId: undefined,
+                      });
+                    }}
+                    className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                  >
+                    <option value="">Toutes les régions</option>
+                    {allRegions.map((region) => (
+                      <option key={region.id} value={region.id}>
+                        {region.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {superAdminFilter.regionId && (
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-slate-600">
+                      District
+                    </label>
+                    <select
+                      value={superAdminFilter.districtId || ""}
+                      onChange={(e) => {
+                        setSuperAdminFilter({
+                          ...superAdminFilter,
+                          type: e.target.value ? "district" : "region",
+                          districtId: e.target.value || undefined,
+                          healthCenterId: undefined,
+                        });
+                      }}
+                      className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                    >
+                      <option value="">Tous les districts</option>
+                      {filterDistricts.map((district) => (
+                        <option key={district.id} value={district.id}>
+                          {district.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                {superAdminFilter.districtId && (
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-slate-600">
+                      Centre de santé
+                    </label>
+                    <select
+                      value={superAdminFilter.healthCenterId || ""}
+                      onChange={(e) => {
+                        setSuperAdminFilter({
+                          ...superAdminFilter,
+                          type: e.target.value ? "healthcenter" : "district",
+                          healthCenterId: e.target.value || undefined,
+                        });
+                      }}
+                      className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                    >
+                      <option value="">Tous les centres</option>
+                      {filterHealthCenters.map((center) => (
+                        <option key={center.id} value={center.id}>
+                          {center.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           <div className="mb-8 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
             {statCards.map((card, index) => {
@@ -1179,7 +1365,7 @@ export default function DashboardPage() {
         <div className="space-y-6 animate-fadeIn">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
-              <h1 className="text-2xl font-semibold text-slate-900">
+              <h1 className="text-xl md:text-2xl font-semibold text-slate-900">
                 Tableau de bord Agent
               </h1>
               <p className="text-sm text-slate-500">
@@ -1423,6 +1609,9 @@ export default function DashboardPage() {
     if (!user) {
       return "Tableau de bord";
     }
+    if (isSuperAdmin) {
+      return "Tableau de bord superadmin";
+    }
     if (role === "NATIONAL") {
       return "Tableau de bord national";
     }
@@ -1451,6 +1640,9 @@ export default function DashboardPage() {
     if (!user) {
       return "Vue d'ensemble de la couverture vaccinale.";
     }
+    if (isSuperAdmin) {
+      return "Vue d'ensemble de la couverture vaccinale avec filtres.";
+    }
     if (role === "NATIONAL") {
       return "Vue d'ensemble de la couverture vaccinale nationale.";
     }
@@ -1473,7 +1665,7 @@ export default function DashboardPage() {
     <DashboardShell active="/dashboard">
       <div className="space-y-8">
         <div className="space-y-2">
-          <h2 className="text-2xl font-semibold text-slate-900">
+          <h2 className="text-xl md:text-2xl font-semibold text-slate-900">
             {title}
           </h2>
           <p className="text-sm text-slate-500">{subtitle}</p>

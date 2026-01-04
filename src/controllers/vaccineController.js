@@ -6,6 +6,7 @@ const {
   notifyVaccineLate,
   notifyAppointmentUpdated,
   notifyAppointmentCancelled,
+  notifyHealthCenterAgents,
 } = require("../services/notificationService");
 const { get } = require("../routes");
 const {
@@ -17,6 +18,7 @@ const {
 const {
   rebuildChildVaccinationBuckets,
 } = require("../services/vaccineBucketService");
+const { logEventAsync } = require("../services/eventLogService");
 
 /**
  * Réassigne automatiquement les doses pour tous les rendez-vous d'un enfant pour un vaccin donné
@@ -473,7 +475,7 @@ const normalizeCalendarAssignments = async (
 
 const createVaccine = async (req, res, next) => {
 
-  if (req.user.role !== "NATIONAL") {
+  if (!["SUPERADMIN", "NATIONAL"].includes(req.user.role)) {
     return res.status(403).json({ message: "Accès refusé" });
   }
 
@@ -484,6 +486,28 @@ const createVaccine = async (req, res, next) => {
         description: req.body.description,
         dosesRequired: req.body.dosesRequired,
         gender: req.body.gender || null, // null = pour tous, 'M' = garçons, 'F' = filles
+      },
+    });
+
+    // Enregistrer l'événement
+    logEventAsync({
+      type: "VACCINE",
+      action: "CREATE",
+      user: {
+        id: req.user.id,
+        firstName: req.user.firstName,
+        lastName: req.user.lastName,
+        email: req.user.email,
+        role: req.user.role,
+      },
+      entityType: "VACCINE",
+      entityId: newVaccine.id,
+      entityName: newVaccine.name,
+      details: {
+        name: newVaccine.name,
+        description: newVaccine.description,
+        dosesRequired: newVaccine.dosesRequired,
+        gender: newVaccine.gender,
       },
     });
 
@@ -501,7 +525,7 @@ const getVaccine = async (req, res, next) => {
     req.user.role === "AGENT" && (req.user.agentLevel === "ADMIN" || req.user.agentLevel === "STAFF");
 
   if (
-    !["NATIONAL", "REGIONAL", "DISTRICT"].includes(req.user.role) &&
+    !["SUPERADMIN", "NATIONAL", "REGIONAL", "DISTRICT"].includes(req.user.role) &&
     !isAgent
   ) {
     return res.status(403).json({ message: "Accès refusé" });
@@ -564,7 +588,7 @@ const getVaccine = async (req, res, next) => {
 
 const createVaccineCalendar = async (req, res, next) => {
 
-  if (req.user.role !== "NATIONAL") {
+  if (!["SUPERADMIN", "NATIONAL"].includes(req.user.role)) {
     return res.status(403).json({ message: "Accès refusé" });
   }
 
@@ -654,6 +678,30 @@ const createVaccineCalendar = async (req, res, next) => {
       include: calendarAssignmentsInclude,
     });
 
+    // Enregistrer l'événement
+    logEventAsync({
+      type: "VACCINE_CALENDAR",
+      action: "CREATE",
+      user: {
+        id: req.user.id,
+        firstName: req.user.firstName,
+        lastName: req.user.lastName,
+        email: req.user.email,
+        role: req.user.role,
+      },
+      entityType: "VACCINE_CALENDAR",
+      entityId: calendarId,
+      entityName: refreshed?.description || "Calendrier vaccinal",
+      details: {
+        description: refreshed?.description,
+        ageUnit: refreshed?.ageUnit,
+        specificAge: refreshed?.specificAge,
+        minAge: refreshed?.minAge,
+        maxAge: refreshed?.maxAge,
+        vaccineIds: vaccineIds,
+      },
+    });
+
     res.status(201).json(formatCalendarForResponse(refreshed));
   } catch (error) {
     next(error);
@@ -661,7 +709,7 @@ const createVaccineCalendar = async (req, res, next) => {
 };
 
 const updateVaccineCalendar = async (req, res, next) => {
-  if (req.user.role !== "NATIONAL") {
+  if (!["SUPERADMIN", "NATIONAL"].includes(req.user.role)) {
     return res.status(403).json({ message: "Accès refusé" });
   }
 
@@ -852,7 +900,7 @@ const updateVaccineCalendar = async (req, res, next) => {
 };
 
 const deleteVaccineCalendar = async (req, res, next) => {
-  if (req.user.role !== "NATIONAL") {
+  if (!["SUPERADMIN", "NATIONAL"].includes(req.user.role)) {
     return res.status(403).json({ message: "Accès refusé" });
   }
 
@@ -863,6 +911,15 @@ const deleteVaccineCalendar = async (req, res, next) => {
   }
 
   try {
+    // Récupérer le calendrier avant suppression pour l'événement
+    const calendar = await prisma.vaccineCalendar.findUnique({
+      where: { id },
+    });
+
+    if (!calendar) {
+      return res.status(404).json({ message: "Calendrier vaccinal introuvable." });
+    }
+
     const { affectedChildIds, affectedVaccineIds } =
       await prisma.$transaction(async (tx) => {
       const childIdSet = new Set();
@@ -947,6 +1004,26 @@ const deleteVaccineCalendar = async (req, res, next) => {
         affectedChildIds: Array.from(childIdSet),
         affectedVaccineIds: Array.from(new Set(vaccineIds)),
       };
+    });
+
+    // Enregistrer l'événement
+    logEventAsync({
+      type: "VACCINE_CALENDAR",
+      action: "DELETE",
+      user: {
+        id: req.user.id,
+        firstName: req.user.firstName,
+        lastName: req.user.lastName,
+        email: req.user.email,
+        role: req.user.role,
+      },
+      entityType: "VACCINE_CALENDAR",
+      entityId: id,
+      entityName: calendar.description,
+      metadata: {
+        affectedChildIds: affectedChildIds.length,
+        affectedVaccineIds: affectedVaccineIds.length,
+      },
     });
 
     if (affectedChildIds.length > 0) {
@@ -1036,7 +1113,7 @@ const listVaccineCalendars = async (req, res, next) => {
     req.user.role === "AGENT" && (req.user.agentLevel === "ADMIN" || req.user.agentLevel === "STAFF");
 
   if (
-    !["NATIONAL", "REGIONAL", "DISTRICT"].includes(req.user.role) &&
+    !["SUPERADMIN", "NATIONAL", "REGIONAL", "DISTRICT"].includes(req.user.role) &&
     !isAgent
   ) {
     return res.status(403).json({ message: "Accès refusé" });
@@ -1051,7 +1128,7 @@ const listVaccineCalendars = async (req, res, next) => {
 };
 
 const listVaccineCalendarDoseWarnings = async (req, res, next) => {
-  if (req.user.role !== "NATIONAL") {
+  if (!["SUPERADMIN", "NATIONAL"].includes(req.user.role)) {
     return res.status(403).json({ message: "Accès réservé aux agents nationaux." });
   }
 
@@ -1114,7 +1191,7 @@ const downloadVaccineCalendarPdf = async (req, res, next) => {
     req.user.role === "AGENT" && (req.user.agentLevel === "ADMIN" || req.user.agentLevel === "STAFF");
 
   if (
-    !["NATIONAL", "REGIONAL", "DISTRICT"].includes(req.user.role) &&
+    !["SUPERADMIN", "NATIONAL", "REGIONAL", "DISTRICT"].includes(req.user.role) &&
     !isAgent
   ) {
     return res.status(403).json({ message: "Accès refusé" });
@@ -1256,7 +1333,7 @@ const releaseReservationForSchedule = async (
 };
 
 const updateVaccine = async (req, res, next) => {
-  if (req.user.role !== "NATIONAL") {
+  if (!["SUPERADMIN", "NATIONAL"].includes(req.user.role)) {
     return res.status(403).json({ message: "Accès refusé" });
   }
 
@@ -1287,7 +1364,7 @@ const updateVaccine = async (req, res, next) => {
 };
 
 const deleteVaccine = async (req, res, next) => {
-  if (req.user.role !== "NATIONAL") {
+  if (!["SUPERADMIN", "NATIONAL"].includes(req.user.role)) {
     return res.status(403).json({ message: "Accès refusé" });
   }
 
@@ -1447,6 +1524,29 @@ const deleteVaccine = async (req, res, next) => {
       });
     }
 
+    // Enregistrer l'événement
+    logEventAsync({
+      type: "VACCINE",
+      action: "DELETE",
+      user: {
+        id: req.user.id,
+        firstName: req.user.firstName,
+        lastName: req.user.lastName,
+        email: req.user.email,
+        role: req.user.role,
+      },
+      entityType: "VACCINE",
+      entityId: vaccineId,
+      entityName: vaccine.name,
+      details: {
+        name: vaccine.name,
+        description: vaccine.description,
+        dosesRequired: vaccine.dosesRequired,
+        gender: vaccine.gender,
+        cancelledAppointments: appointmentsToNotify.length,
+      },
+    });
+
     res.status(204).end();
   } catch (error) {
     console.error("Error deleting vaccine:", error);
@@ -1564,8 +1664,15 @@ const ScheduleVaccine = async (req, res, next) => {
       }
 
       // Vérifier si le vaccin correspond au genre de l'enfant
+      // Si le vaccin n'est pas dans le calendrier vaccinal (vaccineCalendarId est null),
+      // on ne bloque pas mais on retourne un warning
       const isSuitable = !vaccine.gender || vaccine.gender === child.gender;
-      if (!isSuitable) {
+      let genderWarning = null;
+      if (!isSuitable && !vaccineCalendarId) {
+        // Si c'est un vaccin "autre" (pas dans le calendrier), on ne bloque pas mais on avertit
+        genderWarning = "Ce vaccin n'est pas adapté au genre de l'enfant selon le calendrier vaccinal, mais vous pouvez continuer.";
+      } else if (!isSuitable) {
+        // Si c'est un vaccin du calendrier, on bloque
         throw Object.assign(
           new Error("Ce vaccin n'est pas adapté au genre de l'enfant"),
           { status: 400 }
@@ -1634,13 +1741,14 @@ const ScheduleVaccine = async (req, res, next) => {
 
       // Créer une notification pour le parent (après la transaction)
       // On le fait après la transaction pour éviter les problèmes de rollback
-      if (created.child) {
+      const finalSchedule = createdWithCorrectDose || created;
+      if (finalSchedule && finalSchedule.child) {
         setImmediate(async () => {
           try {
             await notifyVaccineScheduled({
-              childId: created.child.id,
-              vaccineName: created.vaccine.name,
-              scheduledDate: created.scheduledFor,
+              childId: finalSchedule.child.id,
+              vaccineName: finalSchedule.vaccine.name,
+              scheduledDate: finalSchedule.scheduledFor,
             });
           } catch (notifError) {
             console.error("Erreur création notification:", notifError);
@@ -1656,10 +1764,46 @@ const ScheduleVaccine = async (req, res, next) => {
       // Mettre à jour nextAppointment avec le prochain rendez-vous le plus proche
       await updateNextAppointment(tx, childId);
 
-      return createdWithCorrectDose || created;
+      return { 
+        appointment: createdWithCorrectDose || created,
+        genderWarning 
+      };
     });
 
-    res.status(201).json(result);
+    const appointment = result.appointment || result;
+
+    // Enregistrer l'événement
+    logEventAsync({
+      type: "APPOINTMENT",
+      action: "CREATE",
+      user: {
+        id: req.user.id,
+        firstName: req.user.firstName,
+        lastName: req.user.lastName,
+        email: req.user.email,
+        role: req.user.role,
+      },
+      entityType: "APPOINTMENT",
+      entityId: appointment.id,
+      entityName: appointment.vaccine?.name || "Vaccin",
+      details: {
+        childId: appointment.childId,
+        vaccineId: appointment.vaccineId,
+        scheduledFor: appointment.scheduledFor,
+        dose: appointment.dose,
+        vaccineCalendarId: appointment.vaccineCalendarId,
+      },
+    });
+
+    // Si on a un warning mais que le rendez-vous a été créé, retourner le résultat avec le warning
+    if (result.genderWarning) {
+      return res.status(201).json({
+        ...appointment,
+        warning: result.genderWarning,
+      });
+    }
+
+    res.status(201).json(appointment);
   } catch (error) {
     // Gérer les erreurs Prisma spécifiques
     if (error.code === "P2002") {
@@ -1716,6 +1860,9 @@ const listScheduledVaccines = async (req, res, next) => {
           },
         },
       };
+    } else if (req.user.role === "NATIONAL" || req.user.role === "SUPERADMIN") {
+      // Pour NATIONAL et SUPERADMIN, on récupère tous les rendez-vous
+      whereClause = {};
     }
 
     const scheduledList = await prisma.childVaccineScheduled.findMany({
@@ -1772,6 +1919,13 @@ const listScheduledVaccines = async (req, res, next) => {
             specificAge: true,
           },
         },
+        planner: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
         administeredBy: {
           select: {
             id: true,
@@ -1786,7 +1940,7 @@ const listScheduledVaccines = async (req, res, next) => {
     });
 
     let regionsList = [];
-    if (req.user.role === "NATIONAL") {
+    if (req.user.role === "NATIONAL" || req.user.role === "SUPERADMIN") {
       regionsList = await prisma.region.findMany({
         select: { id: true, name: true },
         orderBy: { name: "asc" },
@@ -1871,6 +2025,7 @@ const completeVaccine = async (req, res, next) => {
           plannerId: true,
           administeredById: true,
           dose: true,
+          scheduledFor: true,
           child: { select: { healthCenterId: true } },
         },
       });
@@ -1883,6 +2038,16 @@ const completeVaccine = async (req, res, next) => {
 
       if (scheduled.child?.healthCenterId !== req.user.healthCenterId) {
         throw Object.assign(new Error("Accès refusé"), { status: 403 });
+      }
+
+      // Vérifier que la date et l'heure du rendez-vous sont passées
+      const now = new Date();
+      const appointmentDate = new Date(scheduled.scheduledFor);
+      if (appointmentDate > now) {
+        throw Object.assign(
+          new Error("Vous ne pouvez marquer ce rendez-vous comme effectué qu'à partir de la date et heure prévues"),
+          { status: 400 }
+        );
       }
 
       const dose = scheduled.dose ?? 1;
@@ -2007,6 +2172,34 @@ const completeVaccine = async (req, res, next) => {
       });
 
       return newVaccineCompleted;
+    });
+
+    // Notifier les agents du centre (après la réponse pour ne pas bloquer)
+    setImmediate(async () => {
+      try {
+        const completedWithDetails = await prisma.childVaccineCompleted.findUnique({
+          where: { id: completed.id },
+          include: {
+            child: {
+              select: { healthCenterId: true, firstName: true, lastName: true },
+            },
+            vaccine: {
+              select: { name: true },
+            },
+          },
+        });
+        if (completedWithDetails?.child?.healthCenterId) {
+          await notifyHealthCenterAgents({
+            healthCenterId: completedWithDetails.child.healthCenterId,
+            title: "Vaccin administré",
+            message: `${req.user.firstName} ${req.user.lastName} a administré le vaccin ${completedWithDetails.vaccine?.name || "Vaccin"} (Dose ${completed.dose}) à ${completedWithDetails.child.firstName} ${completedWithDetails.child.lastName}`,
+            type: "APPOINTMENT_COMPLETED",
+            excludeUserId: req.user.id,
+          });
+        }
+      } catch (notifError) {
+        console.error("Erreur notification agents:", notifError);
+      }
     });
 
     return res.status(201).json(completed);
@@ -2398,11 +2591,12 @@ const updateScheduledVaccine = async (req, res, next) => {
         new Date(originalSnapshot.scheduledFor).getTime() !==
           new Date(updated.scheduledFor).getTime()
       ) {
+        const vaccineName = updated.vaccine?.name || "vaccin";
         updates.push({
           title: "Date du rendez-vous modifiée",
           message: originalDateLabel
-            ? `Le rendez-vous est désormais prévu le ${newDateLabel ?? ""} (au lieu du ${originalDateLabel}).`
-            : `Le rendez-vous est désormais prévu le ${newDateLabel ?? ""}.`,
+            ? `Le rendez-vous pour le vaccin ${vaccineName} est désormais prévu le ${newDateLabel ?? ""} (au lieu du ${originalDateLabel}).`
+            : `Le rendez-vous pour le vaccin ${vaccineName} est désormais prévu le ${newDateLabel ?? ""}.`,
         });
       }
 
@@ -2415,21 +2609,11 @@ const updateScheduledVaccine = async (req, res, next) => {
         });
       }
 
-      if (
-        (originalSnapshot.vaccineCalendarId ?? null) !==
-        (updated.vaccineCalendarId ?? null)
-      ) {
-        updates.push({
-          title: "Tranche d'âge ajustée",
-          message:
-            "La tranche d'âge ou le calendrier associé à ce rendez-vous a été mis à jour.",
-        });
-      }
-
       if ((originalSnapshot.dose ?? 1) !== (updated.dose ?? 1)) {
+        const vaccineName = updated.vaccine?.name || "vaccin";
         updates.push({
           title: "Dose mise à jour",
-          message: `La dose prévue pour ce rendez-vous est désormais la dose ${updated.dose ?? 1}.`,
+          message: `La dose prévue pour le rendez-vous du vaccin ${vaccineName} est désormais la dose ${updated.dose ?? 1}.`,
         });
       }
 
@@ -2439,14 +2623,16 @@ const updateScheduledVaccine = async (req, res, next) => {
       if (originalAdministeredById !== newAdministeredById) {
         if (newAdministeredById && updated.administeredBy) {
           const agentName = `${updated.administeredBy.firstName} ${updated.administeredBy.lastName}`.trim();
+          const vaccineName = updated.vaccine?.name || "vaccin";
           updates.push({
             title: "Agent modifié",
-            message: `L'agent qui va administrer le vaccin est désormais ${agentName}.`,
+            message: `L'agent qui va administrer le vaccin ${vaccineName} est désormais ${agentName}.`,
           });
         } else if (originalAdministeredById && !newAdministeredById) {
+          const vaccineName = updated.vaccine?.name || "vaccin";
           updates.push({
             title: "Agent retiré",
-            message: "L'agent assigné à ce rendez-vous a été retiré.",
+            message: `L'agent assigné au rendez-vous du vaccin ${vaccineName} a été retiré.`,
           });
         }
       }
@@ -2462,6 +2648,35 @@ const updateScheduledVaccine = async (req, res, next) => {
         }
       }
     }
+
+    // Notifier les agents du centre (après la réponse pour ne pas bloquer)
+    setImmediate(async () => {
+      try {
+        const child = await prisma.children.findUnique({
+          where: { id: originalSnapshot?.childId || updated?.childId },
+          select: { healthCenterId: true, firstName: true, lastName: true },
+        });
+        if (child && child.healthCenterId) {
+          const formattedDate = new Date(updated.scheduledFor).toLocaleDateString("fr-FR", {
+            weekday: "long",
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+          await notifyHealthCenterAgents({
+            healthCenterId: child.healthCenterId,
+            title: "Rendez-vous modifié",
+            message: `${req.user.firstName} ${req.user.lastName} a modifié un rendez-vous pour ${child.firstName} ${child.lastName} - ${updated.vaccine?.name || "Vaccin"} (Dose ${updated.dose}) le ${formattedDate}`,
+            type: "APPOINTMENT_UPDATED",
+            excludeUserId: req.user.id,
+          });
+        }
+      } catch (notifError) {
+        console.error("Erreur notification agents:", notifError);
+      }
+    });
 
     res.json(updated);
   } catch (error) {
@@ -2559,6 +2774,57 @@ const cancelScheduledVaccine = async (req, res, next) => {
         } catch (notifError) {
           console.error("Erreur création notification d'annulation:", notifError);
         }
+      });
+    }
+
+    // Notifier les agents du centre (après la réponse pour ne pas bloquer)
+    setImmediate(async () => {
+      try {
+        const child = await prisma.children.findUnique({
+          where: { id: appointmentInfo?.childId },
+          select: { healthCenterId: true, firstName: true, lastName: true },
+        });
+        if (child && child.healthCenterId && appointmentInfo) {
+          const formattedDate = new Date(appointmentInfo.scheduledDate).toLocaleDateString("fr-FR", {
+            weekday: "long",
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+          await notifyHealthCenterAgents({
+            healthCenterId: child.healthCenterId,
+            title: "Rendez-vous annulé",
+            message: `${req.user.firstName} ${req.user.lastName} a annulé un rendez-vous pour ${child.firstName} ${child.lastName} - ${appointmentInfo.vaccineName} prévu le ${formattedDate}`,
+            type: "APPOINTMENT_DELETED",
+            excludeUserId: req.user.id,
+          });
+        }
+      } catch (notifError) {
+        console.error("Erreur notification agents:", notifError);
+      }
+    });
+
+    // Enregistrer l'événement
+    if (appointmentInfo) {
+      logEventAsync({
+        type: "APPOINTMENT",
+        action: "DELETE",
+        user: {
+          id: req.user.id,
+          firstName: req.user.firstName,
+          lastName: req.user.lastName,
+          email: req.user.email,
+          role: req.user.role,
+        },
+        entityType: "APPOINTMENT",
+        entityId: id,
+        entityName: appointmentInfo.vaccineName,
+        details: {
+          childId: appointmentInfo.childId,
+          scheduledDate: appointmentInfo.scheduledDate,
+        },
       });
     }
 

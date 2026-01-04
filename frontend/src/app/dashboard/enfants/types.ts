@@ -148,7 +148,6 @@ export type ParentChild = {
 export type ParentOverview = {
   parentPhone: string;
   parentName: string;
-  parentEmail?: string | null;
   childrenCount: number;
   children: ParentChild[];
   regions: string[];

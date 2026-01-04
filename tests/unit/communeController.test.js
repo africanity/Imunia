@@ -179,7 +179,7 @@ describe('communeController', () => {
         where: { regionId: 'region-1' },
         include: {
           region: { select: { id: true, name: true } },
-          district: { select: { id: true, name: true } },
+          districts: { select: { id: true, name: true } },
         },
         orderBy: { name: 'asc' },
       });

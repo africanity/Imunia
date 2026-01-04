@@ -30,6 +30,9 @@ const {
   listDistrictLots,
   listHealthCenterLots,
   reduceLotNATIONAL,
+  reduceLotREGIONAL,
+  reduceLotDISTRICT,
+  reduceLotHEALTHCENTER,
   deleteLot,
   getNationalStockStats,
   getRegionalStockStats,
@@ -135,6 +138,7 @@ jest.mock('../../src/config/prismaClient', () => ({
   stockLot: {
     findUnique: jest.fn(),
     findMany: jest.fn(),
+    findFirst: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
     delete: jest.fn(),
@@ -212,7 +216,9 @@ jest.mock('../../src/services/stockLotService', () => ({
   LOT_STATUS: {
     VALID: 'VALID',
     EXPIRED: 'EXPIRED',
+    PENDING: 'PENDING',
   },
+  deleteLotDirect: jest.fn(),
   createLot: jest.fn(),
   consumeLots: jest.fn(),
   recordTransfer: jest.fn(),
@@ -495,25 +501,58 @@ describe('stockController', () => {
       req.body.vaccineId = 'vaccine-1';
       req.body.regionId = 'region-1';
       req.body.quantity = 100;
-      const mockRegionalStock = { id: 'stock-1', vaccineId: 'vaccine-1', regionId: 'region-1', quantity: 100, region: { name: 'Dakar' }, vaccine: { name: 'BCG' } };
-      const mockNationalStock = { id: 'stock-1', vaccineId: 'vaccine-1', quantity: 200 };
-      prisma.stockREGIONAL.findUnique.mockResolvedValue(mockRegionalStock);
-      prisma.stockNATIONAL.findUnique.mockResolvedValue(mockNationalStock);
+      req.user.role = 'NATIONAL';
+      
+      const mockRegionalStock = { 
+        id: 'stock-1', 
+        vaccineId: 'vaccine-1', 
+        regionId: 'region-1', 
+        quantity: 0, 
+        region: { name: 'Dakar' }, 
+        vaccine: { name: 'BCG' } 
+      };
+      const mockNationalStock = { 
+        id: 'stock-1', 
+        vaccineId: 'vaccine-1', 
+        quantity: 200,
+        vaccine: { name: 'BCG' }
+      };
+      const mockAllocations = [{ lotId: 'lot-1', quantity: 100 }];
+      const mockFirstLot = { id: 'lot-1', expiration: new Date('2025-12-31') };
+      const mockPendingTransfer = { 
+        id: 'transfer-1',
+        vaccine: { name: 'BCG' },
+        lots: [{ lot: { id: 'lot-1' } }],
+      };
+      const mockUpdatedNational = { 
+        id: 'stock-1', 
+        vaccineId: 'vaccine-1', 
+        quantity: 100,
+        vaccine: { name: 'BCG' }
+      };
+
       stockLotService.consumeLots.mockResolvedValue([{ lotId: 'lot-1', quantity: 100 }]);
-      prisma.user.findMany.mockResolvedValue([{ email: 'test@test.com' }]);
-      emailService.sendStockTransferNotificationEmail.mockResolvedValue();
+      stockLotService.createLot.mockResolvedValue({ id: 'pending-lot-1' });
       prisma.$transaction.mockImplementation(async (callback) => {
         const mockTx = {
           stockREGIONAL: {
-            findUnique: prisma.stockREGIONAL.findUnique,
-            update: jest.fn().mockResolvedValue(mockRegionalStock),
+            findUnique: jest.fn().mockResolvedValue(mockRegionalStock),
+            create: jest.fn().mockResolvedValue(mockRegionalStock),
           },
           stockNATIONAL: {
-            findUnique: prisma.stockNATIONAL.findUnique,
-            update: jest.fn().mockResolvedValue(mockNationalStock),
+            findUnique: jest.fn()
+              .mockResolvedValueOnce(mockNationalStock) // Vérification quantité
+              .mockResolvedValueOnce(mockUpdatedNational), // Récupération après update
+            update: jest.fn().mockResolvedValue({ ...mockNationalStock, quantity: 100 }),
+          },
+          stockLot: {
+            findUnique: jest.fn()
+              .mockResolvedValueOnce({ remainingQuantity: 0, quantity: 0 }) // Vérification lot vide
+              .mockResolvedValueOnce(mockFirstLot), // Récupération expiration
+            delete: jest.fn().mockResolvedValue({}),
           },
           pendingStockTransfer: {
-            create: jest.fn().mockResolvedValue({ id: 'transfer-1' }),
+            create: jest.fn().mockResolvedValue(mockPendingTransfer),
           },
         };
         return callback(mockTx);
@@ -521,7 +560,13 @@ describe('stockController', () => {
 
       await addStockREGIONAL(req, res, next);
 
-      expect(res.json).toHaveBeenCalled();
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          national: expect.any(Object),
+          pendingTransfer: expect.any(Object),
+          message: expect.any(String),
+        })
+      );
     });
 
     it('devrait retourner 400 si quantité insuffisante dans stock national', async () => {
@@ -613,15 +658,15 @@ describe('stockController', () => {
       req.body.vaccineId = 'vaccine-1';
       prisma.stockNATIONAL.findUnique.mockResolvedValue({ id: 'stock-1', vaccineId: 'vaccine-1' });
       prisma.stockLot.findMany.mockResolvedValue([{ id: 'lot-1' }]);
-      stockLotService.deleteLotCascade.mockResolvedValue(['lot-1']);
+      stockLotService.deleteLotDirect.mockResolvedValue('lot-1');
       prisma.$transaction.mockImplementation(async (callback) => {
         const mockTx = {
           stockNATIONAL: {
-            findUnique: prisma.stockNATIONAL.findUnique,
+            findUnique: jest.fn().mockResolvedValue({ id: 'stock-1', vaccineId: 'vaccine-1' }),
             delete: jest.fn().mockResolvedValue({}),
           },
           stockLot: {
-            findMany: prisma.stockLot.findMany,
+            findMany: jest.fn().mockResolvedValue([{ id: 'lot-1' }]),
           },
         };
         return callback(mockTx);
@@ -696,7 +741,7 @@ describe('stockController', () => {
       req.body = {};
     });
 
-    it('devrait retourner 403 si utilisateur n\'est pas NATIONAL', async () => {
+    it('devrait retourner 403 si utilisateur n\'est pas NATIONAL ou SUPERADMIN', async () => {
       req.user.role = 'REGIONAL';
       req.params.id = 'lot-1';
       req.body.quantity = 10;
@@ -1034,20 +1079,29 @@ describe('stockController', () => {
   });
 
   describe('deleteLot', () => {
-    it('devrait retourner 403 si utilisateur n\'est pas NATIONAL', async () => {
-      req.user.role = 'REGIONAL';
+    it('devrait retourner 403 si utilisateur n\'est pas autorisé', async () => {
+      req.user.role = 'AGENT';
+      req.user.agentLevel = 'STAFF'; // STAFF ne peut pas supprimer
+      req.params.id = 'lot-1';
       await deleteLot(req, res, next);
       expect(res.status).toHaveBeenCalledWith(403);
     });
 
     it('devrait supprimer un lot avec succès', async () => {
+      req.user.role = 'NATIONAL';
       req.params.id = 'lot-1';
-      prisma.stockLot.findUnique.mockResolvedValue({ id: 'lot-1' });
-      stockLotService.deleteLotCascade.mockResolvedValue(['lot-1']);
+      const mockLot = { 
+        id: 'lot-1', 
+        ownerType: 'NATIONAL', 
+        ownerId: null,
+        status: 'ACTIVE',
+        expiration: new Date('2025-12-31')
+      };
+      stockLotService.deleteLotDirect.mockResolvedValue('lot-1');
       prisma.$transaction.mockImplementation(async (callback) => {
         const mockTx = {
           stockLot: {
-            findUnique: prisma.stockLot.findUnique,
+            findUnique: jest.fn().mockResolvedValue(mockLot),
           },
         };
         return callback(mockTx);
@@ -1057,7 +1111,7 @@ describe('stockController', () => {
 
       expect(res.json).toHaveBeenCalled();
       const response = res.json.mock.calls[0][0];
-      expect(response.deletedIds).toEqual(['lot-1']);
+      expect(response.deletedId).toEqual('lot-1');
     });
 
     it('devrait retourner 404 si lot introuvable', async () => {
@@ -1074,6 +1128,425 @@ describe('stockController', () => {
       await deleteLot(req, res, next);
 
       expect(res.status).toHaveBeenCalledWith(404);
+    });
+  });
+
+  describe('reduceLotREGIONAL', () => {
+    beforeEach(() => {
+      jest.clearAllMocks();
+      req.user = { role: 'REGIONAL', id: 'user-1', regionId: 'region-1' };
+      req.params = {};
+      req.body = {};
+    });
+
+    it('devrait retourner 403 si utilisateur n\'est pas SUPERADMIN, NATIONAL ou REGIONAL', async () => {
+      req.user.role = 'DISTRICT';
+      req.params.id = 'lot-1';
+      req.body.quantity = 10;
+      await reduceLotREGIONAL(req, res, next);
+      expect(res.status).toHaveBeenCalledWith(403);
+    });
+
+    it('devrait réduire la quantité d\'un lot régional avec succès (REGIONAL)', async () => {
+      req.params.id = 'lot-1';
+      req.body.quantity = 10;
+      
+      const mockLot = {
+        id: 'lot-1',
+        vaccineId: 'vaccine-1',
+        ownerType: 'REGIONAL',
+        ownerId: 'region-1',
+        remainingQuantity: 100,
+        vaccine: { name: 'BCG' },
+      };
+
+      const mockUpdatedLot = {
+        ...mockLot,
+        remainingQuantity: 90,
+      };
+
+      const mockAllLots = [
+        { remainingQuantity: 90 },
+        { remainingQuantity: 50 },
+      ];
+
+      prisma.user.findUnique = jest.fn().mockResolvedValue({ regionId: 'region-1' });
+      prisma.$transaction.mockImplementation(async (callback) => {
+        const mockTx = {
+          stockLot: {
+            findUnique: jest.fn().mockResolvedValue(mockLot),
+            findMany: jest.fn().mockResolvedValue(mockAllLots),
+            update: jest.fn().mockResolvedValue(mockUpdatedLot),
+          },
+          stockREGIONAL: {
+            update: jest.fn().mockResolvedValue({}),
+          },
+        };
+        stockLotService.updateNearestExpiration.mockResolvedValue();
+        return callback(mockTx);
+      });
+
+      await reduceLotREGIONAL(req, res, next);
+
+      expect(res.json).toHaveBeenCalled();
+      const response = res.json.mock.calls[0][0];
+      expect(response.remainingQuantity).toBe(90);
+    });
+
+    it('devrait permettre à SUPERADMIN de réduire un lot régional', async () => {
+      req.user.role = 'SUPERADMIN';
+      req.params.id = 'lot-1';
+      req.body.quantity = 10;
+      
+      const mockLot = {
+        id: 'lot-1',
+        vaccineId: 'vaccine-1',
+        ownerType: 'REGIONAL',
+        ownerId: 'region-1',
+        remainingQuantity: 100,
+        vaccine: { name: 'BCG' },
+      };
+
+      const mockAllLots = [{ remainingQuantity: 90 }];
+
+      prisma.$transaction.mockImplementation(async (callback) => {
+        const mockTx = {
+          stockLot: {
+            findUnique: jest.fn().mockResolvedValue(mockLot),
+            findMany: jest.fn().mockResolvedValue(mockAllLots),
+            update: jest.fn().mockResolvedValue({ ...mockLot, remainingQuantity: 90 }),
+          },
+          stockREGIONAL: {
+            update: jest.fn().mockResolvedValue({}),
+          },
+        };
+        stockLotService.updateNearestExpiration.mockResolvedValue();
+        return callback(mockTx);
+      });
+
+      await reduceLotREGIONAL(req, res, next);
+
+      expect(res.json).toHaveBeenCalled();
+    });
+
+    it('devrait retourner 403 si REGIONAL essaie de réduire un lot d\'une autre région', async () => {
+      req.user.role = 'REGIONAL';
+      req.user.regionId = 'region-1';
+      req.params.id = 'lot-1';
+      req.body.quantity = 10;
+      
+      const mockLot = {
+        id: 'lot-1',
+        vaccineId: 'vaccine-1',
+        ownerType: 'REGIONAL',
+        ownerId: 'region-2', // Autre région
+        remainingQuantity: 100,
+        vaccine: { name: 'BCG' },
+      };
+
+      prisma.user.findUnique = jest.fn().mockResolvedValue({ regionId: 'region-1' });
+      prisma.$transaction.mockImplementation(async (callback) => {
+        const mockTx = {
+          stockLot: {
+            findUnique: jest.fn().mockResolvedValue(mockLot),
+          },
+        };
+        return callback(mockTx);
+      });
+
+      await reduceLotREGIONAL(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Accès refusé pour cette région',
+      });
+    });
+
+    it('devrait retourner 403 si le lot n\'appartient pas au stock régional', async () => {
+      req.user.role = 'REGIONAL';
+      req.params.id = 'lot-1';
+      req.body.quantity = 10;
+
+      const mockLot = {
+        id: 'lot-1',
+        vaccineId: 'vaccine-1',
+        ownerType: 'NATIONAL', // Pas REGIONAL
+        ownerId: null,
+        remainingQuantity: 100,
+        vaccine: { name: 'BCG' },
+      };
+
+      prisma.$transaction.mockImplementation(async (callback) => {
+        const mockTx = {
+          stockLot: {
+            findUnique: jest.fn().mockResolvedValue(mockLot),
+          },
+        };
+        return callback(mockTx);
+      });
+
+      await reduceLotREGIONAL(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith({
+        message: "Ce lot n'appartient pas à une région",
+      });
+    });
+  });
+
+  describe('reduceLotDISTRICT', () => {
+    beforeEach(() => {
+      jest.clearAllMocks();
+      req.user = { role: 'DISTRICT', id: 'user-1', districtId: 'district-1' };
+      req.params = {};
+      req.body = {};
+    });
+
+    it('devrait retourner 403 si utilisateur n\'est pas SUPERADMIN, REGIONAL ou DISTRICT', async () => {
+      req.user.role = 'NATIONAL';
+      req.params.id = 'lot-1';
+      req.body.quantity = 10;
+      await reduceLotDISTRICT(req, res, next);
+      expect(res.status).toHaveBeenCalledWith(403);
+    });
+
+    it('devrait réduire la quantité d\'un lot district avec succès (DISTRICT)', async () => {
+      req.params.id = 'lot-1';
+      req.body.quantity = 10;
+      
+      const mockLot = {
+        id: 'lot-1',
+        vaccineId: 'vaccine-1',
+        ownerType: 'DISTRICT',
+        ownerId: 'district-1',
+        remainingQuantity: 100,
+        vaccine: { name: 'BCG' },
+      };
+
+      const mockAllLots = [{ remainingQuantity: 90 }];
+
+      prisma.user.findUnique = jest.fn().mockResolvedValue({ districtId: 'district-1' });
+      prisma.$transaction.mockImplementation(async (callback) => {
+        const mockTx = {
+          stockLot: {
+            findUnique: jest.fn().mockResolvedValue(mockLot),
+            findMany: jest.fn().mockResolvedValue(mockAllLots),
+            update: jest.fn().mockResolvedValue({ ...mockLot, remainingQuantity: 90 }),
+          },
+          stockDISTRICT: {
+            update: jest.fn().mockResolvedValue({}),
+          },
+          district: {
+            findUnique: jest.fn().mockResolvedValue({ commune: { regionId: 'region-1' } }),
+          },
+        };
+        stockLotService.updateNearestExpiration.mockResolvedValue();
+        return callback(mockTx);
+      });
+
+      await reduceLotDISTRICT(req, res, next);
+
+      expect(res.json).toHaveBeenCalled();
+    });
+
+    it('devrait permettre à SUPERADMIN de réduire un lot district', async () => {
+      req.user.role = 'SUPERADMIN';
+      req.params.id = 'lot-1';
+      req.body.quantity = 10;
+      
+      const mockLot = {
+        id: 'lot-1',
+        vaccineId: 'vaccine-1',
+        ownerType: 'DISTRICT',
+        ownerId: 'district-1',
+        remainingQuantity: 100,
+        vaccine: { name: 'BCG' },
+      };
+
+      const mockAllLots = [{ remainingQuantity: 90 }];
+
+      prisma.$transaction.mockImplementation(async (callback) => {
+        const mockTx = {
+          stockLot: {
+            findUnique: jest.fn().mockResolvedValue(mockLot),
+            findMany: jest.fn().mockResolvedValue(mockAllLots),
+            update: jest.fn().mockResolvedValue({ ...mockLot, remainingQuantity: 90 }),
+          },
+          stockDISTRICT: {
+            update: jest.fn().mockResolvedValue({}),
+          },
+        };
+        stockLotService.updateNearestExpiration.mockResolvedValue();
+        return callback(mockTx);
+      });
+
+      await reduceLotDISTRICT(req, res, next);
+
+      expect(res.json).toHaveBeenCalled();
+    });
+
+    it('devrait retourner 403 si le lot n\'appartient pas au stock district', async () => {
+      req.user.role = 'DISTRICT';
+      req.params.id = 'lot-1';
+      req.body.quantity = 10;
+
+      const mockLot = {
+        id: 'lot-1',
+        vaccineId: 'vaccine-1',
+        ownerType: 'REGIONAL', // Pas DISTRICT
+        ownerId: 'region-1',
+        remainingQuantity: 100,
+        vaccine: { name: 'BCG' },
+      };
+
+      prisma.$transaction.mockImplementation(async (callback) => {
+        const mockTx = {
+          stockLot: {
+            findUnique: jest.fn().mockResolvedValue(mockLot),
+          },
+        };
+        return callback(mockTx);
+      });
+
+      await reduceLotDISTRICT(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith({
+        message: "Ce lot n'appartient pas à un district",
+      });
+    });
+  });
+
+  describe('reduceLotHEALTHCENTER', () => {
+    beforeEach(() => {
+      jest.clearAllMocks();
+      req.user = { role: 'AGENT', id: 'user-1', agentLevel: 'ADMIN', healthCenterId: 'healthcenter-1' };
+      req.params = {};
+      req.body = {};
+    });
+
+    it('devrait retourner 403 si utilisateur n\'est pas SUPERADMIN, DISTRICT ou AGENT', async () => {
+      req.user.role = 'REGIONAL';
+      req.params.id = 'lot-1';
+      req.body.quantity = 10;
+      await reduceLotHEALTHCENTER(req, res, next);
+      expect(res.status).toHaveBeenCalledWith(403);
+    });
+
+    it('devrait retourner 403 si AGENT n\'est pas ADMIN', async () => {
+      req.user.role = 'AGENT';
+      req.user.agentLevel = 'STAFF';
+      req.params.id = 'lot-1';
+      req.body.quantity = 10;
+      await reduceLotHEALTHCENTER(req, res, next);
+      expect(res.status).toHaveBeenCalledWith(403);
+    });
+
+    it('devrait réduire la quantité d\'un lot health center avec succès (AGENT ADMIN)', async () => {
+      req.params.id = 'lot-1';
+      req.body.quantity = 10;
+      
+      const mockLot = {
+        id: 'lot-1',
+        vaccineId: 'vaccine-1',
+        ownerType: 'HEALTHCENTER',
+        ownerId: 'healthcenter-1',
+        remainingQuantity: 100,
+        vaccine: { name: 'BCG' },
+      };
+
+      const mockAllLots = [{ remainingQuantity: 90 }];
+
+      prisma.user.findUnique = jest.fn().mockResolvedValue({ healthCenterId: 'healthcenter-1' });
+      prisma.$transaction.mockImplementation(async (callback) => {
+        const mockTx = {
+          stockLot: {
+            findUnique: jest.fn().mockResolvedValue(mockLot),
+            findMany: jest.fn().mockResolvedValue(mockAllLots),
+            update: jest.fn().mockResolvedValue({ ...mockLot, remainingQuantity: 90 }),
+          },
+          stockHEALTHCENTER: {
+            update: jest.fn().mockResolvedValue({}),
+          },
+          healthCenter: {
+            findUnique: jest.fn().mockResolvedValue({ districtId: 'district-1' }),
+          },
+        };
+        stockLotService.updateNearestExpiration.mockResolvedValue();
+        return callback(mockTx);
+      });
+
+      await reduceLotHEALTHCENTER(req, res, next);
+
+      expect(res.json).toHaveBeenCalled();
+    });
+
+    it('devrait permettre à SUPERADMIN de réduire un lot health center', async () => {
+      req.user.role = 'SUPERADMIN';
+      req.params.id = 'lot-1';
+      req.body.quantity = 10;
+      
+      const mockLot = {
+        id: 'lot-1',
+        vaccineId: 'vaccine-1',
+        ownerType: 'HEALTHCENTER',
+        ownerId: 'healthcenter-1',
+        remainingQuantity: 100,
+        vaccine: { name: 'BCG' },
+      };
+
+      const mockAllLots = [{ remainingQuantity: 90 }];
+
+      prisma.$transaction.mockImplementation(async (callback) => {
+        const mockTx = {
+          stockLot: {
+            findUnique: jest.fn().mockResolvedValue(mockLot),
+            findMany: jest.fn().mockResolvedValue(mockAllLots),
+            update: jest.fn().mockResolvedValue({ ...mockLot, remainingQuantity: 90 }),
+          },
+          stockHEALTHCENTER: {
+            update: jest.fn().mockResolvedValue({}),
+          },
+        };
+        stockLotService.updateNearestExpiration.mockResolvedValue();
+        return callback(mockTx);
+      });
+
+      await reduceLotHEALTHCENTER(req, res, next);
+
+      expect(res.json).toHaveBeenCalled();
+    });
+
+    it('devrait retourner 403 si le lot n\'appartient pas au stock health center', async () => {
+      req.user.role = 'AGENT';
+      req.user.agentLevel = 'ADMIN';
+      req.params.id = 'lot-1';
+      req.body.quantity = 10;
+
+      const mockLot = {
+        id: 'lot-1',
+        vaccineId: 'vaccine-1',
+        ownerType: 'DISTRICT', // Pas HEALTHCENTER
+        ownerId: 'district-1',
+        remainingQuantity: 100,
+        vaccine: { name: 'BCG' },
+      };
+
+      prisma.$transaction.mockImplementation(async (callback) => {
+        const mockTx = {
+          stockLot: {
+            findUnique: jest.fn().mockResolvedValue(mockLot),
+          },
+        };
+        return callback(mockTx);
+      });
+
+      await reduceLotHEALTHCENTER(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith({
+        message: "Ce lot n'appartient pas à un centre de santé",
+      });
     });
   });
 
@@ -1118,22 +1591,58 @@ describe('stockController', () => {
         status: 'PENDING',
         quantity: 100,
         lots: [
-          { lotId: 'lot-1', quantity: 100, lot: { id: 'lot-1', expiration: new Date(), status: 'VALID' } },
+          { lotId: 'lot-1', quantity: 100, lot: { id: 'lot-1', expiration: new Date('2025-12-31'), status: 'VALID' } },
         ],
         vaccine: { name: 'BCG' },
       };
-      prisma.stockREGIONAL.findUnique.mockResolvedValue({ id: 'stock-1', quantity: 0 });
-      stockLotService.createLot.mockResolvedValue({ id: 'new-lot-1' });
-      stockLotService.recordTransfer.mockResolvedValue({ id: 'transfer-record-1' });
+      const mockPendingLot = {
+        id: 'pending-lot-1',
+        pendingTransferId: 'transfer-1',
+        status: 'PENDING',
+        ownerType: 'REGIONAL',
+        ownerId: 'region-1',
+        expiration: new Date('2025-12-31'),
+      };
+      const mockUpdatedStock = {
+        id: 'stock-1',
+        quantity: 100,
+        vaccine: { name: 'BCG' },
+        region: { name: 'Dakar' },
+      };
+      const mockConfirmedTransfer = {
+        ...mockTransfer,
+        confirmedBy: {
+          id: req.user.id,
+          firstName: req.user.firstName,
+          lastName: req.user.lastName,
+          email: req.user.email,
+        },
+      };
+      stockLotService.recordTransfer.mockResolvedValue();
       prisma.$transaction.mockImplementation(async (callback) => {
         const mockTx = {
           pendingStockTransfer: {
-            findUnique: jest.fn().mockResolvedValue(mockTransfer),
-            update: jest.fn().mockResolvedValue({ ...mockTransfer, status: 'CONFIRMED' }),
+            findUnique: jest.fn()
+              .mockResolvedValueOnce(mockTransfer) // Premier appel pour vérifier
+              .mockResolvedValueOnce(mockConfirmedTransfer), // Deuxième appel pour confirmedTransfer
+            delete: jest.fn().mockResolvedValue({}),
           },
           stockREGIONAL: {
-            findUnique: prisma.stockREGIONAL.findUnique,
+            findUnique: jest.fn()
+              .mockResolvedValueOnce({ id: 'stock-1', quantity: 0 })
+              .mockResolvedValueOnce(mockUpdatedStock),
             update: jest.fn().mockResolvedValue({ id: 'stock-1', quantity: 100 }),
+            create: jest.fn().mockResolvedValue({ id: 'stock-1', quantity: 0 }),
+          },
+          stockLot: {
+            findFirst: jest.fn().mockResolvedValue(mockPendingLot),
+            update: jest.fn().mockResolvedValue({ ...mockPendingLot, status: 'VALID', quantity: 100 }),
+          },
+          stockTransferHistory: {
+            create: jest.fn().mockResolvedValue({ id: 'history-1' }),
+          },
+          region: {
+            findUnique: jest.fn().mockResolvedValue({ name: 'Dakar' }),
           },
         };
         return callback(mockTx);
@@ -1284,19 +1793,31 @@ describe('stockController', () => {
         quantity: 200,
       };
       stockLotService.consumeLots.mockResolvedValue([{ lotId: 'lot-1', quantity: 100 }]);
+      stockLotService.createLot.mockResolvedValue({ id: 'pending-lot-1' });
       prisma.$transaction.mockImplementation(async (callback) => {
         const mockTx = {
           stockDISTRICT: {
             findUnique: jest.fn()
               .mockResolvedValueOnce(mockDistrictStock)
               .mockResolvedValueOnce({ ...mockDistrictStock, quantity: 0 }),
+            create: jest.fn().mockResolvedValue(mockDistrictStock),
           },
           stockREGIONAL: {
-            findUnique: jest.fn().mockResolvedValue(mockRegionalStock),
+            findUnique: jest.fn()
+              .mockResolvedValueOnce(mockRegionalStock)
+              .mockResolvedValueOnce({ ...mockRegionalStock, quantity: 100 }),
             update: jest.fn().mockResolvedValue({ ...mockRegionalStock, quantity: 100 }),
           },
+          stockLot: {
+            findUnique: jest.fn().mockResolvedValue({ id: 'lot-1', expiration: new Date('2025-12-31') }),
+          },
           pendingStockTransfer: {
-            create: jest.fn().mockResolvedValue({ id: 'transfer-1', status: 'PENDING' }),
+            create: jest.fn().mockResolvedValue({ 
+              id: 'transfer-1', 
+              status: 'PENDING',
+              vaccine: { name: 'BCG' },
+              lots: [{ lot: { id: 'lot-1' } }],
+            }),
           },
         };
         return callback(mockTx);
@@ -1384,18 +1905,29 @@ describe('stockController', () => {
         quantity: 200,
       };
       stockLotService.consumeLots.mockResolvedValue([{ lotId: 'lot-1', quantity: 100 }]);
+      stockLotService.createLot.mockResolvedValue({ id: 'pending-lot-1' });
       prisma.$transaction.mockImplementation(async (callback) => {
         const mockTx = {
           stockHEALTHCENTER: {
             findUnique: jest.fn().mockResolvedValue(mockHealthCenterStock),
+            create: jest.fn().mockResolvedValue(mockHealthCenterStock),
           },
           stockDISTRICT: {
-            findUnique: jest.fn().mockResolvedValue(mockDistrictStock),
+            findUnique: jest.fn()
+              .mockResolvedValueOnce(mockDistrictStock)
+              .mockResolvedValueOnce({ ...mockDistrictStock, quantity: 100 }),
             update: jest.fn().mockResolvedValue({ ...mockDistrictStock, quantity: 100 }),
-            findUnique: jest.fn().mockResolvedValue({ ...mockDistrictStock, quantity: 100 }),
+          },
+          stockLot: {
+            findUnique: jest.fn().mockResolvedValue({ id: 'lot-1', expiration: new Date('2025-12-31') }),
           },
           pendingStockTransfer: {
-            create: jest.fn().mockResolvedValue({ id: 'transfer-1', status: 'PENDING' }),
+            create: jest.fn().mockResolvedValue({ 
+              id: 'transfer-1', 
+              status: 'PENDING',
+              vaccine: { name: 'BCG' },
+              lots: [{ lot: { id: 'lot-1' } }],
+            }),
           },
         };
         return callback(mockTx);
@@ -1531,21 +2063,27 @@ describe('stockController', () => {
   });
 
   describe('updateStockREGIONAL', () => {
-    it('devrait retourner 403 si utilisateur n\'est pas NATIONAL ou REGIONAL', async () => {
-      req.user.role = 'DISTRICT';
+    it('devrait retourner 403 si utilisateur n\'est pas SUPERADMIN', async () => {
+      req.user.role = 'NATIONAL';
       await updateStockREGIONAL(req, res, next);
       expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith({ message: 'Accès refusé' });
     });
 
-    it('devrait mettre à jour le stock régional avec succès', async () => {
+    it('devrait retourner 403 si utilisateur est REGIONAL', async () => {
       req.user.role = 'REGIONAL';
+      await updateStockREGIONAL(req, res, next);
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith({ message: 'Accès refusé' });
+    });
+
+    it('devrait mettre à jour le stock régional avec succès (SUPERADMIN)', async () => {
+      req.user.role = 'SUPERADMIN';
       req.body.vaccineId = 'vaccine-1';
       req.body.regionId = 'region-1';
       req.body.quantity = 300;
       req.body.expiration = '2025-12-31';
-      prisma.user.findUnique.mockResolvedValue({ regionId: 'region-1' });
       const mockStock = { id: 'stock-1', vaccineId: 'vaccine-1', regionId: 'region-1', quantity: 200 };
-      prisma.stockREGIONAL.findFirst.mockResolvedValue(mockStock);
       stockLotService.createLot.mockResolvedValue({ id: 'lot-1' });
       prisma.$transaction.mockImplementation(async (callback) => {
         const mockTx = {
@@ -1563,30 +2101,46 @@ describe('stockController', () => {
 
       expect(res.json).toHaveBeenCalled();
     });
+
+    it('devrait retourner 400 si regionId manquant', async () => {
+      req.user.role = 'SUPERADMIN';
+      req.body.vaccineId = 'vaccine-1';
+      req.body.quantity = 300;
+      await updateStockREGIONAL(req, res, next);
+      expect(res.status).toHaveBeenCalledWith(400);
+    });
   });
 
   describe('updateStockDISTRICT', () => {
-    it('devrait retourner 403 si utilisateur n\'est pas REGIONAL ou DISTRICT', async () => {
-      req.user.role = 'NATIONAL';
+    it('devrait retourner 403 si utilisateur n\'est pas SUPERADMIN', async () => {
+      req.user.role = 'REGIONAL';
       await updateStockDISTRICT(req, res, next);
       expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith({ message: 'Accès refusé' });
     });
 
-    it('devrait mettre à jour le stock district avec succès', async () => {
+    it('devrait retourner 403 si utilisateur est DISTRICT', async () => {
       req.user.role = 'DISTRICT';
+      await updateStockDISTRICT(req, res, next);
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith({ message: 'Accès refusé' });
+    });
+
+    it('devrait mettre à jour le stock district avec succès (SUPERADMIN)', async () => {
+      req.user.role = 'SUPERADMIN';
       req.body.vaccineId = 'vaccine-1';
       req.body.districtId = 'district-1';
       req.body.quantity = 300;
       req.body.expiration = '2025-12-31';
-      prisma.user.findUnique.mockResolvedValue({ districtId: 'district-1' });
       const mockStock = { id: 'stock-1', vaccineId: 'vaccine-1', districtId: 'district-1', quantity: 200 };
       stockLotService.createLot.mockResolvedValue({ id: 'lot-1' });
       prisma.$transaction.mockImplementation(async (callback) => {
         const mockTx = {
           stockDISTRICT: {
-            findUnique: jest.fn().mockResolvedValue(mockStock),
+            findUnique: jest.fn()
+              .mockResolvedValueOnce(mockStock)
+              .mockResolvedValueOnce({ ...mockStock, quantity: 300, vaccine: { name: 'BCG' }, district: { name: 'District Test', commune: {} } }),
             update: jest.fn().mockResolvedValue({ ...mockStock, quantity: 300 }),
-            findUnique: jest.fn().mockResolvedValue({ ...mockStock, quantity: 300 }),
           },
         };
         return callback(mockTx);
@@ -1596,31 +2150,59 @@ describe('stockController', () => {
 
       expect(res.json).toHaveBeenCalled();
     });
+
+    it('devrait retourner 404 si stock district introuvable', async () => {
+      req.user.role = 'SUPERADMIN';
+      req.body.vaccineId = 'vaccine-1';
+      req.body.districtId = 'district-1';
+      req.body.quantity = 300;
+      req.body.expiration = '2025-12-31';
+      prisma.$transaction.mockImplementation(async (callback) => {
+        const mockTx = {
+          stockDISTRICT: {
+            findUnique: jest.fn().mockResolvedValue(null),
+          },
+        };
+        return callback(mockTx);
+      });
+
+      await updateStockDISTRICT(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(404);
+    });
   });
 
   describe('updateStockHEALTHCENTER', () => {
-    it('devrait retourner 403 si utilisateur n\'est pas DISTRICT ou AGENT', async () => {
-      req.user.role = 'REGIONAL';
+    it('devrait retourner 403 si utilisateur n\'est pas SUPERADMIN', async () => {
+      req.user.role = 'DISTRICT';
       await updateStockHEALTHCENTER(req, res, next);
       expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith({ message: 'Accès refusé' });
     });
 
-    it('devrait mettre à jour le stock health center avec succès (AGENT ADMIN)', async () => {
+    it('devrait retourner 403 si utilisateur est AGENT ADMIN', async () => {
       req.user.role = 'AGENT';
       req.user.agentLevel = 'ADMIN';
+      await updateStockHEALTHCENTER(req, res, next);
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith({ message: 'Accès refusé' });
+    });
+
+    it('devrait mettre à jour le stock health center avec succès (SUPERADMIN)', async () => {
+      req.user.role = 'SUPERADMIN';
       req.body.vaccineId = 'vaccine-1';
       req.body.healthCenterId = 'healthcenter-1';
       req.body.quantity = 300;
       req.body.expiration = '2025-12-31';
-      prisma.user.findUnique.mockResolvedValue({ healthCenterId: 'healthcenter-1' });
       const mockStock = { id: 'stock-1', vaccineId: 'vaccine-1', healthCenterId: 'healthcenter-1', quantity: 200 };
       stockLotService.createLot.mockResolvedValue({ id: 'lot-1' });
       prisma.$transaction.mockImplementation(async (callback) => {
         const mockTx = {
           stockHEALTHCENTER: {
-            findUnique: jest.fn().mockResolvedValue(mockStock),
+            findUnique: jest.fn()
+              .mockResolvedValueOnce(mockStock)
+              .mockResolvedValueOnce({ ...mockStock, quantity: 300, vaccine: { name: 'BCG' }, healthCenter: { name: 'Centre Test' } }),
             update: jest.fn().mockResolvedValue({ ...mockStock, quantity: 300 }),
-            findUnique: jest.fn().mockResolvedValue({ ...mockStock, quantity: 300 }),
           },
         };
         return callback(mockTx);
@@ -1629,6 +2211,26 @@ describe('stockController', () => {
       await updateStockHEALTHCENTER(req, res, next);
 
       expect(res.json).toHaveBeenCalled();
+    });
+
+    it('devrait retourner 404 si stock health center introuvable', async () => {
+      req.user.role = 'SUPERADMIN';
+      req.body.vaccineId = 'vaccine-1';
+      req.body.healthCenterId = 'healthcenter-1';
+      req.body.quantity = 300;
+      req.body.expiration = '2025-12-31';
+      prisma.$transaction.mockImplementation(async (callback) => {
+        const mockTx = {
+          stockHEALTHCENTER: {
+            findUnique: jest.fn().mockResolvedValue(null),
+          },
+        };
+        return callback(mockTx);
+      });
+
+      await updateStockHEALTHCENTER(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(404);
     });
   });
 
@@ -1830,7 +2432,9 @@ describe('stockController', () => {
       req.user.role = 'REGIONAL';
       req.body.vaccineId = 'vaccine-1';
       prisma.user.findUnique.mockResolvedValue({ regionId: 'region-1' });
-      stockLotService.deleteLotCascade.mockResolvedValue();
+      prisma.stockLot.findFirst.mockResolvedValue({ id: 'lot-1', status: 'EXPIRED' }); // Lot expiré requis
+      prisma.stockLot.findMany.mockResolvedValue([{ id: 'lot-1' }]);
+      stockLotService.deleteLotDirect.mockResolvedValue('lot-1');
       prisma.$transaction.mockImplementation(async (callback) => {
         const mockTx = {
           stockREGIONAL: {
@@ -1838,8 +2442,8 @@ describe('stockController', () => {
             delete: jest.fn().mockResolvedValue({}),
           },
           stockLot: {
-            findMany: jest.fn().mockResolvedValue([]),
-            deleteMany: jest.fn().mockResolvedValue({}),
+            findFirst: prisma.stockLot.findFirst,
+            findMany: jest.fn().mockResolvedValue([{ id: 'lot-1' }]),
           },
         };
         return callback(mockTx);
@@ -1863,7 +2467,9 @@ describe('stockController', () => {
       req.user.role = 'DISTRICT';
       req.body.vaccineId = 'vaccine-1';
       prisma.user.findUnique.mockResolvedValue({ districtId: 'district-1' });
-      stockLotService.deleteLotCascade.mockResolvedValue();
+      prisma.stockLot.findFirst.mockResolvedValue({ id: 'lot-1', status: 'EXPIRED' }); // Lot expiré requis
+      prisma.stockLot.findMany.mockResolvedValue([{ id: 'lot-1' }]);
+      stockLotService.deleteLotDirect.mockResolvedValue('lot-1');
       prisma.$transaction.mockImplementation(async (callback) => {
         const mockTx = {
           stockDISTRICT: {
@@ -1871,8 +2477,8 @@ describe('stockController', () => {
             delete: jest.fn().mockResolvedValue({}),
           },
           stockLot: {
-            findMany: jest.fn().mockResolvedValue([]),
-            deleteMany: jest.fn().mockResolvedValue({}),
+            findFirst: prisma.stockLot.findFirst,
+            findMany: jest.fn().mockResolvedValue([{ id: 'lot-1' }]),
           },
         };
         return callback(mockTx);
@@ -1897,7 +2503,9 @@ describe('stockController', () => {
       req.user.agentLevel = 'ADMIN';
       req.body.vaccineId = 'vaccine-1';
       prisma.user.findUnique.mockResolvedValue({ healthCenterId: 'healthcenter-1' });
-      stockLotService.deleteLotCascade.mockResolvedValue();
+      prisma.stockLot.findFirst.mockResolvedValue({ id: 'lot-1', status: 'EXPIRED' }); // Lot expiré requis
+      prisma.stockLot.findMany.mockResolvedValue([{ id: 'lot-1' }]);
+      stockLotService.deleteLotDirect.mockResolvedValue('lot-1');
       prisma.$transaction.mockImplementation(async (callback) => {
         const mockTx = {
           stockHEALTHCENTER: {
@@ -1905,8 +2513,8 @@ describe('stockController', () => {
             delete: jest.fn().mockResolvedValue({}),
           },
           stockLot: {
-            findMany: jest.fn().mockResolvedValue([]),
-            deleteMany: jest.fn().mockResolvedValue({}),
+            findFirst: prisma.stockLot.findFirst,
+            findMany: jest.fn().mockResolvedValue([{ id: 'lot-1' }]),
           },
         };
         return callback(mockTx);

@@ -31,20 +31,27 @@ const listHealthCenters = async (req, res, next) => {
   try {
     let whereClause = {};
 
+    // Pour SUPERADMIN, accepter districtId depuis query params
+    const overrideDistrictId = req.user.role === "SUPERADMIN" ? req.query.districtId : null;
+
     if (req.user.role === "DISTRICT") {
       if (!req.user.districtId) {
         return res.json({ total: 0, items: [] });
       }
       whereClause = { districtId: req.user.districtId };
+    } else if (req.user.role === "SUPERADMIN" && overrideDistrictId) {
+      // Filtrer par districtId pour le superadmin
+      whereClause = { districtId: overrideDistrictId };
     } else if (req.user.role === "AGENT") {
       const healthCenterId = await resolveHealthCenterIdForUser(req.user);
       if (!healthCenterId) {
         return res.json({ total: 0, items: [] });
       }
       whereClause = { id: healthCenterId };
-    } else if (req.user.role !== "NATIONAL" && req.user.role !== "REGIONAL") {
+    } else if (!["SUPERADMIN", "NATIONAL", "REGIONAL"].includes(req.user.role)) {
       return res.status(403).json({ message: "Accès refusé" });
     }
+    // Si SUPERADMIN sans districtId, REGIONAL ou NATIONAL : voir tous les centres (whereClause reste vide)
 
     const centers = await prisma.healthCenter.findMany({
       where: whereClause,
@@ -74,13 +81,19 @@ const listHealthCenters = async (req, res, next) => {
 
 const createHealthCenter = async (req, res, next) => {
   try {
-    try {
-      ensureDistrictUser(req.user);
-    } catch (error) {
-      if (error.status) {
-        return res.status(error.status).json({ message: error.message });
+    let districtId = req.body.districtId;
+
+    // Pour SUPERADMIN, accepter districtId depuis le body
+    if (req.user.role !== "SUPERADMIN") {
+      try {
+        ensureDistrictUser(req.user);
+        districtId = req.user.districtId;
+      } catch (error) {
+        if (error.status) {
+          return res.status(error.status).json({ message: error.message });
+        }
+        throw error;
       }
-      throw error;
     }
 
     const { name, address } = req.body ?? {};
@@ -89,11 +102,15 @@ const createHealthCenter = async (req, res, next) => {
       return res.status(400).json({ message: "Nom et adresse requis" });
     }
 
+    if (!districtId) {
+      return res.status(400).json({ message: "District requis" });
+    }
+
     const center = await prisma.healthCenter.create({
       data: {
         name: name.trim(),
         address: address.trim(),
-        districtId: req.user.districtId,
+        districtId,
       },
       include: {
         district: {
@@ -180,21 +197,30 @@ const updateHealthCenter = async (req, res, next) => {
 
 const deleteHealthCenter = async (req, res, next) => {
   try {
-    try {
-      ensureDistrictUser(req.user);
-    } catch (error) {
-      if (error.status) {
-        return res.status(error.status).json({ message: error.message });
-      }
-      throw error;
-    }
-
     const { id } = req.params;
 
-    const center = await prisma.healthCenter.findUnique({ where: { id } });
+    // Pour SUPERADMIN, pas de vérification de district
+    if (req.user.role !== "SUPERADMIN") {
+      try {
+        ensureDistrictUser(req.user);
+      } catch (error) {
+        if (error.status) {
+          return res.status(error.status).json({ message: error.message });
+        }
+        throw error;
+      }
 
-    if (!center || center.districtId !== req.user.districtId) {
-      return res.status(center ? 403 : 404).json({ message: center ? "Accès refusé" : "Centre introuvable" });
+      const center = await prisma.healthCenter.findUnique({ where: { id } });
+
+      if (!center || center.districtId !== req.user.districtId) {
+        return res.status(center ? 403 : 404).json({ message: center ? "Accès refusé" : "Centre introuvable" });
+      }
+    } else {
+      // Pour SUPERADMIN, vérifier juste que le centre existe
+      const center = await prisma.healthCenter.findUnique({ where: { id } });
+      if (!center) {
+        return res.status(404).json({ message: "Centre introuvable" });
+      }
     }
 
     await prisma.$transaction(async (tx) => {
@@ -443,13 +469,16 @@ const formatHealthCenterDeletionSummary = (data) => ({
 
 const getHealthCenterDeletionSummary = async (req, res, next) => {
   try {
-    try {
-      ensureDistrictUser(req.user);
-    } catch (error) {
-      if (error.status) {
-        return res.status(error.status).json({ message: error.message });
+    // Pour SUPERADMIN, pas de vérification de district
+    if (req.user.role !== "SUPERADMIN") {
+      try {
+        ensureDistrictUser(req.user);
+      } catch (error) {
+        if (error.status) {
+          return res.status(error.status).json({ message: error.message });
+        }
+        throw error;
       }
-      throw error;
     }
 
     const { id } = req.params;
@@ -457,7 +486,8 @@ const getHealthCenterDeletionSummary = async (req, res, next) => {
       collectHealthCenterCascadeData(tx, id),
     );
 
-    if (summary.healthCenter.districtId !== req.user.districtId) {
+    // Pour SUPERADMIN, pas de vérification de district
+    if (req.user.role !== "SUPERADMIN" && summary.healthCenter.districtId !== req.user.districtId) {
       return res.status(403).json({ message: "Accès refusé" });
     }
 

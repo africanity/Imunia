@@ -16,6 +16,7 @@ jest.mock('../../src/config/prismaClient', () => ({
     create: jest.fn(),
     findMany: jest.fn(),
     findUnique: jest.fn(),
+    findFirst: jest.fn(),
     update: jest.fn(),
     delete: jest.fn(),
     count: jest.fn(),
@@ -89,6 +90,9 @@ jest.mock('../../src/config/prismaClient', () => ({
     deleteMany: jest.fn(),
   },
   stockREGIONAL: {
+    deleteMany: jest.fn(),
+  },
+  vaccineRequest: {
     deleteMany: jest.fn(),
   },
   $transaction: jest.fn((callback) => {
@@ -320,6 +324,13 @@ describe('regionController', () => {
 
     it('devrait supprimer une région avec toutes ses données liées', async () => {
       req.params.id = 'region-1';
+      req.user = {
+        id: 'user-1',
+        firstName: 'Test',
+        lastName: 'User',
+        email: 'test@example.com',
+        role: 'NATIONAL',
+      };
 
       // Mock des données de cascade
       const mockRegion = { id: 'region-1', name: 'Dakar' };
@@ -328,45 +339,87 @@ describe('regionController', () => {
       const mockHealthCenters = [{ id: 'hc-1', name: 'HC 1' }];
       const mockChildren = [{ id: 'child-1', firstName: 'John', lastName: 'Doe' }];
       const mockUsers = [{ id: 'user-1', firstName: 'User', lastName: '1', role: 'AGENT' }];
-      const mockStockLots = [{ id: 'lot-1', ownerType: OWNER_TYPES.REGIONAL, ownerId: 'region-1' }];
+      const mockStockLots = [{ id: 'lot-1', ownerType: OWNER_TYPES.REGIONAL, ownerId: 'region-1', vaccineId: 'vaccine-1' }];
       const mockPendingTransfers = [{ id: 'transfer-1', status: 'PENDING' }];
 
-      prisma.region.findUnique.mockResolvedValue(mockRegion);
-      prisma.commune.findMany.mockResolvedValue(mockCommunes);
-      prisma.district.findMany.mockResolvedValue(mockDistricts);
-      prisma.healthCenter.findMany.mockResolvedValue(mockHealthCenters);
-      prisma.children.findMany.mockResolvedValue(mockChildren);
-      prisma.user.findMany.mockResolvedValue(mockUsers);
-      prisma.childVaccineScheduled.count.mockResolvedValue(5);
-      prisma.childVaccineDue.count.mockResolvedValue(3);
-      prisma.childVaccineLate.count.mockResolvedValue(2);
-      prisma.childVaccineOverdue.count.mockResolvedValue(1);
-      prisma.childVaccineCompleted.count.mockResolvedValue(10);
-      prisma.stockReservation.count.mockResolvedValue(2);
-      prisma.record.count.mockResolvedValue(5);
-      prisma.stockLot.findMany.mockResolvedValue(mockStockLots);
-      prisma.pendingStockTransfer.findMany.mockResolvedValue(mockPendingTransfers);
+      const cascadeData = {
+        region: mockRegion,
+        communes: mockCommunes,
+        districts: mockDistricts,
+        healthCenters: mockHealthCenters,
+        children: mockChildren,
+        users: mockUsers,
+        childIds: ['child-1'],
+        healthCenterIds: ['hc-1'],
+        districtIds: ['district-1'],
+        communeIds: ['commune-1'],
+        childVaccinationCounts: {
+          scheduled: 5,
+          due: 3,
+          late: 2,
+          overdue: 1,
+          completed: 10,
+        },
+        stockReservationsCount: 2,
+        recordCount: 5,
+        stockLots: mockStockLots,
+        lotIds: ['lot-1'],
+        lotConditions: [{ ownerType: OWNER_TYPES.REGIONAL, ownerId: 'region-1' }],
+        pendingTransfers: mockPendingTransfers,
+        pendingTransferIds: ['transfer-1'],
+      };
 
-      // Mock toutes les opérations de suppression
-      prisma.stockReservation.deleteMany.mockResolvedValue({ count: 2 });
-      prisma.childVaccineScheduled.deleteMany.mockResolvedValue({ count: 5 });
-      prisma.childVaccineCompleted.deleteMany.mockResolvedValue({ count: 10 });
-      prisma.childVaccineDue.deleteMany.mockResolvedValue({ count: 3 });
-      prisma.childVaccineLate.deleteMany.mockResolvedValue({ count: 2 });
-      prisma.childVaccineOverdue.deleteMany.mockResolvedValue({ count: 1 });
-      prisma.record.deleteMany.mockResolvedValue({ count: 5 });
-      prisma.children.deleteMany.mockResolvedValue({ count: 1 });
-      prisma.pendingStockTransferLot.deleteMany.mockResolvedValue({ count: 1 });
-      prisma.stockTransferLot.deleteMany.mockResolvedValue({ count: 1 });
-      prisma.stockLot.deleteMany.mockResolvedValue({ count: 1 });
-      prisma.stockHEALTHCENTER.deleteMany.mockResolvedValue({ count: 1 });
-      prisma.stockDISTRICT.deleteMany.mockResolvedValue({ count: 1 });
-      prisma.stockREGIONAL.deleteMany.mockResolvedValue({ count: 1 });
-      prisma.user.deleteMany.mockResolvedValue({ count: 1 });
-      prisma.healthCenter.deleteMany.mockResolvedValue({ count: 1 });
-      prisma.district.deleteMany.mockResolvedValue({ count: 1 });
-      prisma.commune.deleteMany.mockResolvedValue({ count: 1 });
-      prisma.region.delete.mockResolvedValue(mockRegion);
+      prisma.region.findUnique.mockResolvedValue(mockRegion);
+      
+      // Mock pour la première transaction (collectRegionCascadeData pour logging)
+      prisma.$transaction.mockImplementationOnce(async (callback) => {
+        const mockTx = {
+          region: { findUnique: jest.fn().mockResolvedValue(mockRegion) },
+          commune: { findMany: jest.fn().mockResolvedValue(mockCommunes) },
+          district: { findMany: jest.fn().mockResolvedValue(mockDistricts) },
+          healthCenter: { findMany: jest.fn().mockResolvedValue(mockHealthCenters) },
+          children: { findMany: jest.fn().mockResolvedValue(mockChildren) },
+          user: { findMany: jest.fn().mockResolvedValue(mockUsers) },
+          childVaccineScheduled: { count: jest.fn().mockResolvedValue(5) },
+          childVaccineDue: { count: jest.fn().mockResolvedValue(3) },
+          childVaccineLate: { count: jest.fn().mockResolvedValue(2) },
+          childVaccineOverdue: { count: jest.fn().mockResolvedValue(1) },
+          childVaccineCompleted: { count: jest.fn().mockResolvedValue(10) },
+          stockReservation: { count: jest.fn().mockResolvedValue(2) },
+          record: { count: jest.fn().mockResolvedValue(5) },
+          stockLot: { findMany: jest.fn().mockResolvedValue(mockStockLots) },
+          pendingStockTransfer: { findMany: jest.fn().mockResolvedValue(mockPendingTransfers) },
+        };
+        return await callback(mockTx);
+      });
+
+      // Mock pour la deuxième transaction (suppression)
+      prisma.$transaction.mockImplementationOnce(async (callback) => {
+        const mockTx = {
+          region: { findUnique: jest.fn().mockResolvedValue(mockRegion), delete: jest.fn().mockResolvedValue(mockRegion) },
+          commune: { findMany: jest.fn().mockResolvedValue(mockCommunes), deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
+          district: { findMany: jest.fn().mockResolvedValue(mockDistricts), deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
+          healthCenter: { findMany: jest.fn().mockResolvedValue(mockHealthCenters), deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
+          children: { findMany: jest.fn().mockResolvedValue(mockChildren), deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
+          user: { findMany: jest.fn().mockResolvedValue(mockUsers), deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
+          childVaccineScheduled: { count: jest.fn().mockResolvedValue(5), deleteMany: jest.fn().mockResolvedValue({ count: 5 }) },
+          childVaccineDue: { count: jest.fn().mockResolvedValue(3), deleteMany: jest.fn().mockResolvedValue({ count: 3 }) },
+          childVaccineLate: { count: jest.fn().mockResolvedValue(2), deleteMany: jest.fn().mockResolvedValue({ count: 2 }) },
+          childVaccineOverdue: { count: jest.fn().mockResolvedValue(1), deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
+          childVaccineCompleted: { count: jest.fn().mockResolvedValue(10), deleteMany: jest.fn().mockResolvedValue({ count: 10 }) },
+          stockReservation: { count: jest.fn().mockResolvedValue(2), deleteMany: jest.fn().mockResolvedValue({ count: 2 }) },
+          record: { count: jest.fn().mockResolvedValue(5), deleteMany: jest.fn().mockResolvedValue({ count: 5 }) },
+          stockLot: { findMany: jest.fn().mockResolvedValue(mockStockLots), deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
+          pendingStockTransfer: { findMany: jest.fn().mockResolvedValue(mockPendingTransfers), deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
+          pendingStockTransferLot: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
+          stockTransferLot: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
+          stockHEALTHCENTER: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
+          stockDISTRICT: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
+          stockREGIONAL: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
+          vaccineRequest: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+        };
+        return await callback(mockTx);
+      });
 
       await deleteRegion(req, res, next);
 
@@ -378,25 +431,94 @@ describe('regionController', () => {
 
     it('devrait gérer le cas où la région n\'a pas de données liées', async () => {
       req.params.id = 'region-1';
+      req.user = {
+        id: 'user-1',
+        firstName: 'Test',
+        lastName: 'User',
+        email: 'test@example.com',
+        role: 'NATIONAL',
+      };
 
       const mockRegion = { id: 'region-1', name: 'Dakar' };
 
       prisma.region.findUnique.mockResolvedValue(mockRegion);
-      prisma.commune.findMany.mockResolvedValue([]);
-      prisma.district.findMany.mockResolvedValue([]);
-      prisma.healthCenter.findMany.mockResolvedValue([]);
-      prisma.children.findMany.mockResolvedValue([]);
-      prisma.user.findMany.mockResolvedValue([]);
-      prisma.childVaccineScheduled.count.mockResolvedValue(0);
-      prisma.childVaccineDue.count.mockResolvedValue(0);
-      prisma.childVaccineLate.count.mockResolvedValue(0);
-      prisma.childVaccineOverdue.count.mockResolvedValue(0);
-      prisma.childVaccineCompleted.count.mockResolvedValue(0);
-      prisma.stockReservation.count.mockResolvedValue(0);
-      prisma.record.count.mockResolvedValue(0);
-      prisma.stockLot.findMany.mockResolvedValue([]);
-      prisma.pendingStockTransfer.findMany.mockResolvedValue([]);
-      prisma.region.delete.mockResolvedValue(mockRegion);
+
+      const emptyCascadeData = {
+        region: mockRegion,
+        communes: [],
+        districts: [],
+        healthCenters: [],
+        children: [],
+        users: [],
+        childIds: [],
+        healthCenterIds: [],
+        districtIds: [],
+        communeIds: [],
+        childVaccinationCounts: {
+          scheduled: 0,
+          due: 0,
+          late: 0,
+          overdue: 0,
+          completed: 0,
+        },
+        stockReservationsCount: 0,
+        recordCount: 0,
+        stockLots: [],
+        lotIds: [],
+        lotConditions: [],
+        pendingTransfers: [],
+        pendingTransferIds: [],
+      };
+
+      // Mock pour la première transaction (collectRegionCascadeData pour logging)
+      prisma.$transaction.mockImplementationOnce(async (callback) => {
+        const mockTx = {
+          region: { findUnique: jest.fn().mockResolvedValue(mockRegion) },
+          commune: { findMany: jest.fn().mockResolvedValue([]) },
+          district: { findMany: jest.fn().mockResolvedValue([]) },
+          healthCenter: { findMany: jest.fn().mockResolvedValue([]) },
+          children: { findMany: jest.fn().mockResolvedValue([]) },
+          user: { findMany: jest.fn().mockResolvedValue([]) },
+          childVaccineScheduled: { count: jest.fn().mockResolvedValue(0) },
+          childVaccineDue: { count: jest.fn().mockResolvedValue(0) },
+          childVaccineLate: { count: jest.fn().mockResolvedValue(0) },
+          childVaccineOverdue: { count: jest.fn().mockResolvedValue(0) },
+          childVaccineCompleted: { count: jest.fn().mockResolvedValue(0) },
+          stockReservation: { count: jest.fn().mockResolvedValue(0) },
+          record: { count: jest.fn().mockResolvedValue(0) },
+          stockLot: { findMany: jest.fn().mockResolvedValue([]) },
+          pendingStockTransfer: { findMany: jest.fn().mockResolvedValue([]) },
+        };
+        return await callback(mockTx);
+      });
+
+      // Mock pour la deuxième transaction (suppression)
+      prisma.$transaction.mockImplementationOnce(async (callback) => {
+        const mockTx = {
+          region: { findUnique: jest.fn().mockResolvedValue(mockRegion), delete: jest.fn().mockResolvedValue(mockRegion) },
+          commune: { findMany: jest.fn().mockResolvedValue([]), deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+          district: { findMany: jest.fn().mockResolvedValue([]), deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+          healthCenter: { findMany: jest.fn().mockResolvedValue([]), deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+          children: { findMany: jest.fn().mockResolvedValue([]), deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+          user: { findMany: jest.fn().mockResolvedValue([]), deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+          childVaccineScheduled: { count: jest.fn().mockResolvedValue(0), deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+          childVaccineDue: { count: jest.fn().mockResolvedValue(0), deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+          childVaccineLate: { count: jest.fn().mockResolvedValue(0), deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+          childVaccineOverdue: { count: jest.fn().mockResolvedValue(0), deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+          childVaccineCompleted: { count: jest.fn().mockResolvedValue(0), deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+          stockReservation: { count: jest.fn().mockResolvedValue(0), deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+          record: { count: jest.fn().mockResolvedValue(0), deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+          stockLot: { findMany: jest.fn().mockResolvedValue([]), deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+          pendingStockTransfer: { findMany: jest.fn().mockResolvedValue([]), deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+          pendingStockTransferLot: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+          stockTransferLot: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+          stockHEALTHCENTER: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+          stockDISTRICT: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+          stockREGIONAL: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+          vaccineRequest: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+        };
+        return await callback(mockTx);
+      });
 
       await deleteRegion(req, res, next);
 
@@ -407,8 +529,45 @@ describe('regionController', () => {
 
     it('devrait appeler next en cas d\'erreur', async () => {
       req.params.id = 'region-1';
+      req.user = {
+        id: 'user-1',
+        firstName: 'Test',
+        lastName: 'User',
+        email: 'test@example.com',
+        role: 'NATIONAL',
+      };
+      
+      const mockRegion = { id: 'region-1', name: 'Dakar' };
+      prisma.region.findUnique.mockResolvedValue(mockRegion);
+      
       const error = new Error('Erreur base de données');
-      prisma.$transaction.mockRejectedValue(error);
+      
+      // Mock pour la première transaction (succès)
+      prisma.$transaction.mockImplementationOnce(async (callback) => {
+        const mockTx = {
+          region: { findUnique: jest.fn().mockResolvedValue(mockRegion) },
+          commune: { findMany: jest.fn().mockResolvedValue([]) },
+          district: { findMany: jest.fn().mockResolvedValue([]) },
+          healthCenter: { findMany: jest.fn().mockResolvedValue([]) },
+          children: { findMany: jest.fn().mockResolvedValue([]) },
+          user: { findMany: jest.fn().mockResolvedValue([]) },
+          childVaccineScheduled: { count: jest.fn().mockResolvedValue(0) },
+          childVaccineDue: { count: jest.fn().mockResolvedValue(0) },
+          childVaccineLate: { count: jest.fn().mockResolvedValue(0) },
+          childVaccineOverdue: { count: jest.fn().mockResolvedValue(0) },
+          childVaccineCompleted: { count: jest.fn().mockResolvedValue(0) },
+          stockReservation: { count: jest.fn().mockResolvedValue(0) },
+          record: { count: jest.fn().mockResolvedValue(0) },
+          stockLot: { findMany: jest.fn().mockResolvedValue([]) },
+          pendingStockTransfer: { findMany: jest.fn().mockResolvedValue([]) },
+        };
+        return await callback(mockTx);
+      });
+      
+      // Mock pour la deuxième transaction (erreur)
+      prisma.$transaction.mockImplementationOnce(async () => {
+        throw error;
+      });
 
       await deleteRegion(req, res, next);
 
