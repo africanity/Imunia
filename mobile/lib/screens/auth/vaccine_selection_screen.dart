@@ -333,16 +333,15 @@ class _VaccineSelectionScreenState extends State<VaccineSelectionScreen> {
   }
 
   Future<void> _saveSelectedVaccines() async {
-    if (_selectedVaccinesWithDoses.isEmpty) {
-      // Pas de vaccins sélectionnés, activer le compte et aller directement à l'interface enfant
-      // Le backend activera automatiquement le compte si aucun vaccin n'est sélectionné
-      await _navigateToChildDashboard();
-      return;
-    }
-
     setState(() {
       _error = null;
     });
+
+    // Si aucun vaccin sélectionné, appeler l'API pour activer le compte
+    if (_selectedVaccinesWithDoses.isEmpty) {
+      await _activateAccountWithoutVaccines();
+      return;
+    }
 
     final selectedEntries = _prepareSelectedDoseEntries();
     if (selectedEntries.isEmpty) {
@@ -369,6 +368,49 @@ class _VaccineSelectionScreenState extends State<VaccineSelectionScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _activateAccountWithoutVaccines() async {
+    try {
+      final endpoint = Uri.parse(
+        "${ApiConfig.apiBaseUrl}/mobile/children/${widget.childId}/mark-vaccines-done",
+      );
+
+      final response = await http.post(
+        endpoint,
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer ${widget.token}",
+        },
+        body: jsonEncode({"vaccines": []}), // Tableau vide pour activer le compte
+      );
+
+      if (!mounted) return;
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final responseData = jsonDecode(response.body);
+        final isActive = responseData['isActive'] ?? false;
+
+        if (isActive) {
+          // Le compte est activé, naviguer vers le dashboard
+          await _navigateToChildDashboard();
+        } else {
+          setState(() {
+            _error = "Erreur lors de l'activation du compte. Veuillez réessayer.";
+          });
+        }
+      } else {
+        final data = jsonDecode(response.body);
+        setState(() {
+          _error = data["message"] ?? "Impossible d'activer le compte.";
+        });
+      }
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = "Erreur de connexion au serveur.";
+      });
+    }
   }
 
   List<Map<String, dynamic>> _prepareSelectedDoseEntries() {

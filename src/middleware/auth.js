@@ -3,7 +3,10 @@ const prisma = require("../config/prismaClient");
 
 const requireAuth = async (req, res, next) => {
   const authHeader = req.headers.authorization || "";
-  const token = authHeader.replace("Bearer ", "");
+  // Gérer le format "Bearer <token>" ou "bearer <token>" (insensible à la casse)
+  // Le regex nécessite au moins un caractère après "Bearer " pour être valide
+  const tokenMatch = authHeader.match(/^bearer\s+(.+)$/i);
+  const token = tokenMatch ? tokenMatch[1].trim() : "";
 
   if (!token) {
     return res.status(401).json({ message: "Missing token" });
@@ -43,7 +46,9 @@ const requireAuth = async (req, res, next) => {
 // Middleware pour l'authentification mobile (parents)
 const requireMobileAuth = async (req, res, next) => {
   const authHeader = req.headers.authorization || "";
-  const token = authHeader.replace("Bearer ", "");
+  // Gérer le format "Bearer <token>" ou "bearer <token>" (insensible à la casse)
+  const tokenMatch = authHeader.match(/^bearer\s+(.+)$/i);
+  const token = tokenMatch ? tokenMatch[1].trim() : "";
 
   if (!token) {
     return res.status(401).json({ message: "Token manquant" });
@@ -91,7 +96,9 @@ const requireMobileAuth = async (req, res, next) => {
 // Middleware pour accepter le token dans le header OU en paramètre de requête (pour affichage direct d'images)
 const optionalAuth = async (req, res, next) => {
   const authHeader = req.headers.authorization || "";
-  let token = authHeader.replace("Bearer ", "");
+  // Gérer le format "Bearer <token>" ou "bearer <token>" (insensible à la casse)
+  const tokenMatch = authHeader.match(/^bearer\s+(.+)$/i);
+  let token = tokenMatch ? tokenMatch[1].trim() : "";
   
   // Si pas de token dans le header, chercher dans les paramètres de requête
   if (!token && req.query.token) {
@@ -128,7 +135,8 @@ const optionalAuth = async (req, res, next) => {
     req.user = user;
     next();
   } catch (error) {
-    next(error);
+    // Si erreur JWT (token mal formé, expiré, etc.), renvoie 401
+    return res.status(401).json({ message: "Token invalide" });
   }
 };
 

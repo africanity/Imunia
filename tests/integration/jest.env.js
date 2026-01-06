@@ -1,41 +1,56 @@
 const path = require("path");
-require("dotenv").config({ path: path.resolve(__dirname, "../../.env.test") });
+const fs = require("fs");
 
-// ⚠️ Vérification de sécurité : s'assurer qu'on n'utilise pas la DB de production
-const dbUrl = process.env.DATABASE_URL || "";
+const envTestPath = path.resolve(__dirname, "../../.env.test");
 
-if (!dbUrl) {
-  throw new Error(
-    "❌ DATABASE_URL n'est pas défini dans .env.test. " +
-    "Veuillez créer un fichier .env.test avec une base de données de test."
+// Charger .env.test seulement s'il existe
+if (fs.existsSync(envTestPath)) {
+  require("dotenv").config({ path: envTestPath });
+
+  // ⚠️ Vérification de sécurité : s'assurer qu'on n'utilise pas la DB de production
+  const dbUrl = process.env.DATABASE_URL || "";
+
+  // Pour les tests d'intégration, DATABASE_URL doit être défini
+  // Pour les tests unitaires, on peut continuer sans (ils mockent Prisma)
+  const isIntegrationTest = process.argv.some(arg => 
+    arg.includes('tests/integration') || arg.includes('integration')
   );
-}
 
-// Vérifier que ce n'est pas une base de production
-const productionIndicators = [
-  "production",
-  "prod",
-  "localhost:5432", // Port par défaut PostgreSQL (à adapter selon votre config)
-];
-
-const isProduction = productionIndicators.some((indicator) =>
-  dbUrl.toLowerCase().includes(indicator)
-);
-
-if (isProduction && !dbUrl.includes("test")) {
-  console.warn(
-    "⚠️  ATTENTION: DATABASE_URL semble pointer vers une base de production !"
-  );
-  console.warn("   Assurez-vous d'utiliser une base de données de test.");
-  console.warn(`   DATABASE_URL actuel: ${dbUrl.replace(/:[^:@]+@/, ":****@")}`);
-  
-  // En mode CI/CD ou si FORCE_TEST_DB=true, on peut forcer l'arrêt
-  if (process.env.FORCE_TEST_DB === "true") {
+  if (isIntegrationTest && !dbUrl) {
     throw new Error(
-      "❌ FORCE_TEST_DB=true mais DATABASE_URL semble pointer vers la production. " +
-      "Arrêt par sécurité."
+      "❌ DATABASE_URL n'est pas défini dans .env.test. " +
+      "Veuillez créer un fichier .env.test avec une base de données de test."
     );
   }
-}
 
-console.log("✅ Configuration de test chargée depuis .env.test");
+  // Vérifier que ce n'est pas une base de production (seulement pour les tests d'intégration)
+  if (isIntegrationTest && dbUrl) {
+    const productionIndicators = [
+      "production",
+      "prod",
+      "localhost:5432", // Port par défaut PostgreSQL (à adapter selon votre config)
+    ];
+
+    const isProduction = productionIndicators.some((indicator) =>
+      dbUrl.toLowerCase().includes(indicator)
+    );
+
+    if (isProduction && !dbUrl.includes("test")) {
+      console.warn(
+        "⚠️  ATTENTION: DATABASE_URL semble pointer vers une base de production !"
+      );
+      console.warn("   Assurez-vous d'utiliser une base de données de test.");
+      console.warn(`   DATABASE_URL actuel: ${dbUrl.replace(/:[^:@]+@/, ":****@")}`);
+      
+      // En mode CI/CD ou si FORCE_TEST_DB=true, on peut forcer l'arrêt
+      if (process.env.FORCE_TEST_DB === "true") {
+        throw new Error(
+          "❌ FORCE_TEST_DB=true mais DATABASE_URL semble pointer vers la production. " +
+          "Arrêt par sécurité."
+        );
+      }
+    }
+
+    console.log("✅ Configuration de test chargée depuis .env.test");
+  }
+}

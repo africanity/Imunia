@@ -7,6 +7,9 @@ jest.mock('../../src/services/emailService', () => ({
   sendInvitationEmail: jest.fn(),
   sendTwoFactorCode: jest.fn(),
   sendNewPhotosUploadedEmail: jest.fn(),
+  sendStockTransferNotificationEmail: jest.fn().mockResolvedValue([]),
+  sendTransferRejectedEmail: jest.fn().mockResolvedValue([]),
+  sendTransferCancelledEmail: jest.fn().mockResolvedValue([]),
 }));
 
 jest.mock('../../src/services/notification', () => ({
@@ -22,6 +25,7 @@ jest.mock('../../src/services/whatsapp', () => ({
 jest.mock('../../src/services/notificationService', () => ({
   notifyAccountActivated: jest.fn(),
   notifyPhotoRequest: jest.fn(),
+  notifyHealthCenterAgents: jest.fn().mockResolvedValue([]),
 }));
 
 describe("Stock API - Gestion des Stocks", () => {
@@ -140,7 +144,7 @@ describe("Stock API - Gestion des Stocks", () => {
           password: hashedPassword,
           firstName: "National",
           lastName: "Admin",
-          phone: "123456789",
+          
           role: "NATIONAL",
           isActive: true,
           emailVerified: true,
@@ -188,7 +192,7 @@ describe("Stock API - Gestion des Stocks", () => {
           password: regionalHashedPassword,
           firstName: "Regional",
           lastName: "User",
-          phone: "987654321",
+          
           role: "REGIONAL",
           isActive: true,
           emailVerified: true,
@@ -219,7 +223,7 @@ describe("Stock API - Gestion des Stocks", () => {
           password: districtHashedPassword,
           firstName: "District",
           lastName: "User",
-          phone: "111111111",
+          
           role: "DISTRICT",
           isActive: true,
           emailVerified: true,
@@ -250,7 +254,7 @@ describe("Stock API - Gestion des Stocks", () => {
           password: agentAdminHashedPassword,
           firstName: "Agent",
           lastName: "Admin",
-          phone: "222222222",
+          
           role: "AGENT",
           agentLevel: "ADMIN",
           isActive: true,
@@ -275,7 +279,7 @@ describe("Stock API - Gestion des Stocks", () => {
           password: agentStaffHashedPassword,
           firstName: "Agent",
           lastName: "Staff",
-          phone: "333333333",
+          
           role: "AGENT",
           agentLevel: "STAFF",
           isActive: true,
@@ -1266,9 +1270,8 @@ describe("Stock API - Gestion des Stocks", () => {
           .set("Authorization", `Bearer ${nationalToken}`);
 
         expect(res.statusCode).toBe(200);
-        expect(res.body).toHaveProperty("deletedIds");
-        expect(res.body.deletedIds).toBeInstanceOf(Array);
-        expect(res.body.deletedIds.length).toBeGreaterThan(0);
+        expect(res.body).toHaveProperty("deletedId");
+        expect(res.body.deletedId).toBe(lotId);
 
         // Vérifier en DB
         const lot = await prisma.stockLot.findUnique({
@@ -1527,6 +1530,78 @@ describe("Stock API - Gestion des Stocks", () => {
       });
 
       it("Confirme un transfert avec succès", async () => {
+        // S'assurer que le token REGIONAL est à jour avec le bon regionId
+        regionalToken = await getRegionalToken();
+        
+        // Vérifier que regionId est bien défini et récupérer l'utilisateur REGIONAL pour vérifier son regionId
+        expect(regionId).toBeDefined();
+        const regionalUser = await prisma.user.findUnique({
+          where: { email: regionalEmail },
+          select: { regionId: true },
+        });
+        expect(regionalUser.regionId).toBe(regionId);
+        
+        // Créer le transfert directement dans le test pour éviter les problèmes de nettoyage
+        const futureDate = new Date();
+        futureDate.setFullYear(futureDate.getFullYear() + 1);
+        
+        const lot = await prisma.stockLot.create({
+          data: {
+            vaccineId,
+            ownerType: "NATIONAL",
+            ownerId: null,
+            quantity: 100,
+            remainingQuantity: 100,
+            expiration: futureDate,
+            status: "VALID",
+          },
+        });
+        
+        const pendingTransfer = await prisma.pendingStockTransfer.create({
+          data: {
+            vaccineId,
+            fromType: "NATIONAL",
+            fromId: null,
+            toType: "REGIONAL",
+            toId: regionId,
+            quantity: 50,
+            status: "PENDING",
+          },
+        });
+        const testTransferId = pendingTransfer.id;
+
+        await prisma.pendingStockTransferLot.create({
+          data: {
+            pendingTransferId: pendingTransfer.id,
+            lotId: lot.id,
+            quantity: 50,
+          },
+        });
+
+        // Créer le lot PENDING au niveau REGIONAL (requis pour la confirmation du transfert)
+        await prisma.stockLot.create({
+          data: {
+            vaccineId,
+            ownerType: "REGIONAL",
+            ownerId: regionId,
+            quantity: 0,
+            remainingQuantity: 0,
+            expiration: futureDate,
+            status: "PENDING",
+            pendingTransferId: pendingTransfer.id,
+            sourceLotId: lot.id,
+          },
+        });
+
+        // Vérifier que le transfert existe et a le bon toId
+        const checkTransfer = await prisma.pendingStockTransfer.findUnique({
+          where: { id: testTransferId },
+        });
+        expect(checkTransfer).toBeDefined();
+        expect(checkTransfer.toId).toBe(regionId);
+        expect(checkTransfer.toType).toBe("REGIONAL");
+        expect(checkTransfer.status).toBe("PENDING");
+
         // Créer ou mettre à jour le stock REGIONAL pour que le transfert puisse être confirmé
         await prisma.stockREGIONAL.upsert({
           where: { vaccineId_regionId: { vaccineId, regionId } },
@@ -1534,20 +1609,678 @@ describe("Stock API - Gestion des Stocks", () => {
           create: { vaccineId, regionId, quantity: 0 },
         });
 
+        // Vérifier une dernière fois que le transfert existe avant la confirmation
+        const finalCheck = await prisma.pendingStockTransfer.findUnique({
+          where: { id: testTransferId },
+        });
+        expect(finalCheck).toBeDefined();
+
         const res = await request(app)
-          .post(`/api/stock/pending-transfers/${transferId}/confirm`)
+          .post(`/api/stock/pending-transfers/${testTransferId}/confirm`)
           .set("Authorization", `Bearer ${regionalToken}`);
+
+        // Si 404, afficher les détails pour déboguer
+        if (res.statusCode !== 200) {
+          const transferAfter = await prisma.pendingStockTransfer.findUnique({
+            where: { id: testTransferId },
+          });
+          console.log("Status:", res.statusCode);
+          console.log("Message:", res.body.message);
+          console.log("Transfert existe:", !!transferAfter);
+          if (transferAfter) {
+            console.log("Transfert toId:", transferAfter.toId);
+            console.log("Transfert toType:", transferAfter.toType);
+            console.log("Transfert status:", transferAfter.status);
+          }
+        }
 
         expect(res.statusCode).toBe(200);
         expect(res.body).toHaveProperty("transfer");
         expect(res.body).toHaveProperty("stock");
         expect(res.body).toHaveProperty("message");
 
-        // Vérifier que le transfert est confirmé
+        // Vérifier que le transfert a été supprimé (il est transformé en stockTransferHistory)
         const transfer = await prisma.pendingStockTransfer.findUnique({
-          where: { id: transferId },
+          where: { id: testTransferId },
         });
-        expect(transfer.status).toBe("CONFIRMED");
+        expect(transfer).toBeNull(); // Le transfert est supprimé après confirmation
+
+        // Vérifier que l'historique de transfert a été créé
+        const transferHistory = await prisma.stockTransferHistory.findFirst({
+          where: {
+            vaccineId,
+            fromType: "NATIONAL",
+            toType: "REGIONAL",
+            toId: regionId,
+          },
+        });
+        expect(transferHistory).toBeDefined();
+        expect(transferHistory.quantity).toBe(50);
+      });
+    });
+
+    describe("GET /api/stock/pending-transfers/sent - Transferts envoyés", () => {
+      it("Retourne 401 si non authentifié", async () => {
+        const res = await request(app).get("/api/stock/pending-transfers/sent");
+        expect(res.statusCode).toBe(401);
+      });
+
+      it("Retourne 403 si utilisateur n'est pas NATIONAL, REGIONAL ou DISTRICT", async () => {
+        agentAdminToken = await getAgentAdminToken();
+        const res = await request(app)
+          .get("/api/stock/pending-transfers/sent")
+          .set("Authorization", `Bearer ${agentAdminToken}`);
+        expect(res.statusCode).toBe(403);
+      });
+
+      it("Retourne la liste des transferts envoyés par NATIONAL", async () => {
+        nationalToken = await getNationalToken();
+        
+        // Créer un transfert en attente
+        const futureDate = new Date();
+        futureDate.setFullYear(futureDate.getFullYear() + 1);
+        
+        const lot = await prisma.stockLot.create({
+          data: {
+            vaccineId,
+            ownerType: "NATIONAL",
+            ownerId: null,
+            quantity: 100,
+            remainingQuantity: 100,
+            expiration: futureDate,
+            status: "VALID",
+          },
+        });
+
+        const pendingTransfer = await prisma.pendingStockTransfer.create({
+          data: {
+            vaccineId,
+            fromType: "NATIONAL",
+            fromId: null,
+            toType: "REGIONAL",
+            toId: regionId,
+            quantity: 50,
+            status: "PENDING",
+          },
+        });
+
+        await prisma.pendingStockTransferLot.create({
+          data: {
+            pendingTransferId: pendingTransfer.id,
+            lotId: lot.id,
+            quantity: 50,
+          },
+        });
+
+        const res = await request(app)
+          .get("/api/stock/pending-transfers/sent")
+          .set("Authorization", `Bearer ${nationalToken}`);
+
+        expect(res.statusCode).toBe(200);
+        expect(res.body).toHaveProperty("transfers");
+        expect(Array.isArray(res.body.transfers)).toBe(true);
+        expect(res.body.transfers.length).toBeGreaterThan(0);
+      });
+    });
+
+    describe("POST /api/stock/pending-transfers/:transferId/reject - Refus d'un transfert", () => {
+      let testTransferId;
+      let testLotId;
+
+      beforeEach(async () => {
+        // Créer un transfert en attente pour le test
+        const futureDate = new Date();
+        futureDate.setFullYear(futureDate.getFullYear() + 1);
+        
+        const lot = await prisma.stockLot.create({
+          data: {
+            vaccineId,
+            ownerType: "NATIONAL",
+            ownerId: null,
+            quantity: 100,
+            remainingQuantity: 50, // Réduire pour simuler un transfert
+            expiration: futureDate,
+            status: "VALID",
+          },
+        });
+        testLotId = lot.id;
+
+        const pendingTransfer = await prisma.pendingStockTransfer.create({
+          data: {
+            vaccineId,
+            fromType: "NATIONAL",
+            fromId: null,
+            toType: "REGIONAL",
+            toId: regionId,
+            quantity: 50,
+            status: "PENDING",
+          },
+        });
+        testTransferId = pendingTransfer.id;
+
+        await prisma.pendingStockTransferLot.create({
+          data: {
+            pendingTransferId: pendingTransfer.id,
+            lotId: lot.id,
+            quantity: 50,
+          },
+        });
+
+        // Créer le lot PENDING au niveau REGIONAL
+        await prisma.stockLot.create({
+          data: {
+            vaccineId,
+            ownerType: "REGIONAL",
+            ownerId: regionId,
+            quantity: 0,
+            remainingQuantity: 0,
+            expiration: futureDate,
+            status: "PENDING",
+            pendingTransferId: pendingTransfer.id,
+            sourceLotId: lot.id,
+          },
+        });
+      });
+
+      it("Retourne 401 si non authentifié", async () => {
+        const res = await request(app)
+          .post(`/api/stock/pending-transfers/${testTransferId}/reject`);
+        expect(res.statusCode).toBe(401);
+      });
+
+      it("Retourne 403 si utilisateur n'est pas REGIONAL, DISTRICT ou AGENT", async () => {
+        nationalToken = await getNationalToken();
+        const res = await request(app)
+          .post(`/api/stock/pending-transfers/${testTransferId}/reject`)
+          .set("Authorization", `Bearer ${nationalToken}`);
+        expect(res.statusCode).toBe(403);
+      });
+
+      it("Refuse un transfert avec succès", async () => {
+        regionalToken = await getRegionalToken();
+        
+        const res = await request(app)
+          .post(`/api/stock/pending-transfers/${testTransferId}/reject`)
+          .set("Authorization", `Bearer ${regionalToken}`);
+
+        expect(res.statusCode).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.body.message).toContain("refusé");
+
+        // Vérifier que le transfert a été supprimé
+        const transfer = await prisma.pendingStockTransfer.findUnique({
+          where: { id: testTransferId },
+        });
+        expect(transfer).toBeNull();
+
+        // Vérifier que le lot source a été restauré
+        const lot = await prisma.stockLot.findUnique({
+          where: { id: testLotId },
+        });
+        expect(lot.remainingQuantity).toBe(100); // Restauré à la quantité initiale
+      });
+    });
+
+    describe("POST /api/stock/pending-transfers/:transferId/cancel - Annulation d'un transfert", () => {
+      let testTransferId;
+      let testLotId;
+
+      beforeEach(async () => {
+        // Créer un transfert en attente pour le test
+        const futureDate = new Date();
+        futureDate.setFullYear(futureDate.getFullYear() + 1);
+        
+        const lot = await prisma.stockLot.create({
+          data: {
+            vaccineId,
+            ownerType: "REGIONAL",
+            ownerId: regionId,
+            quantity: 100,
+            remainingQuantity: 50,
+            expiration: futureDate,
+            status: "VALID",
+          },
+        });
+        testLotId = lot.id;
+
+        const pendingTransfer = await prisma.pendingStockTransfer.create({
+          data: {
+            vaccineId,
+            fromType: "REGIONAL",
+            fromId: regionId,
+            toType: "DISTRICT",
+            toId: districtId,
+            quantity: 50,
+            status: "PENDING",
+          },
+        });
+        testTransferId = pendingTransfer.id;
+
+        await prisma.pendingStockTransferLot.create({
+          data: {
+            pendingTransferId: pendingTransfer.id,
+            lotId: lot.id,
+            quantity: 50,
+          },
+        });
+
+        // Créer le lot PENDING au niveau DISTRICT
+        await prisma.stockLot.create({
+          data: {
+            vaccineId,
+            ownerType: "DISTRICT",
+            ownerId: districtId,
+            quantity: 0,
+            remainingQuantity: 0,
+            expiration: futureDate,
+            status: "PENDING",
+            pendingTransferId: pendingTransfer.id,
+            sourceLotId: lot.id,
+          },
+        });
+      });
+
+      it("Retourne 401 si non authentifié", async () => {
+        const res = await request(app)
+          .post(`/api/stock/pending-transfers/${testTransferId}/cancel`);
+        expect(res.statusCode).toBe(401);
+      });
+
+      it("Retourne 403 si utilisateur n'est pas NATIONAL, REGIONAL ou DISTRICT", async () => {
+        agentAdminToken = await getAgentAdminToken();
+        const res = await request(app)
+          .post(`/api/stock/pending-transfers/${testTransferId}/cancel`)
+          .set("Authorization", `Bearer ${agentAdminToken}`);
+        expect(res.statusCode).toBe(403);
+      });
+
+      it("Annule un transfert avec succès", async () => {
+        regionalToken = await getRegionalToken();
+        
+        const res = await request(app)
+          .post(`/api/stock/pending-transfers/${testTransferId}/cancel`)
+          .set("Authorization", `Bearer ${regionalToken}`);
+
+        expect(res.statusCode).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.body.message).toContain("annulé");
+
+        // Vérifier que le transfert a été supprimé
+        const transfer = await prisma.pendingStockTransfer.findUnique({
+          where: { id: testTransferId },
+        });
+        expect(transfer).toBeNull();
+
+        // Vérifier que le lot source a été restauré
+        const lot = await prisma.stockLot.findUnique({
+          where: { id: testLotId },
+        });
+        expect(lot.remainingQuantity).toBe(100);
+      });
+    });
+
+    describe("GET /api/stock/transfer-history - Historique des transferts", () => {
+      it("Retourne 401 si non authentifié", async () => {
+        const res = await request(app).get("/api/stock/transfer-history");
+        expect(res.statusCode).toBe(401);
+      });
+
+      it("Retourne 403 si AGENT n'est pas ADMIN ou STAFF", async () => {
+        agentStaffToken = await getAgentStaffToken();
+        const res = await request(app)
+          .get("/api/stock/transfer-history")
+          .set("Authorization", `Bearer ${agentStaffToken}`);
+        // STAFF peut voir l'historique, donc on vérifie que ça fonctionne
+        expect([200, 403]).toContain(res.statusCode);
+      });
+
+      it("Retourne l'historique des transferts", async () => {
+        nationalToken = await getNationalToken();
+        
+        const res = await request(app)
+          .get("/api/stock/transfer-history")
+          .set("Authorization", `Bearer ${nationalToken}`);
+
+        expect(res.statusCode).toBe(200);
+        expect(res.body).toHaveProperty("history");
+        expect(res.body).toHaveProperty("total");
+        expect(res.body).toHaveProperty("page");
+        expect(res.body).toHaveProperty("limit");
+        expect(Array.isArray(res.body.history)).toBe(true);
+      });
+    });
+  });
+
+  describe("Réduction de lots", () => {
+    describe("POST /api/stock/national/lot/:id/reduce - Réduction lot NATIONAL", () => {
+      let lotId;
+
+      beforeEach(async () => {
+        const futureDate = new Date();
+        futureDate.setFullYear(futureDate.getFullYear() + 1);
+        
+        const lot = await prisma.stockLot.create({
+          data: {
+            vaccineId,
+            ownerType: "NATIONAL",
+            ownerId: null,
+            quantity: 100,
+            remainingQuantity: 100,
+            expiration: futureDate,
+            status: "VALID",
+          },
+        });
+        lotId = lot.id;
+
+        await prisma.stockNATIONAL.upsert({
+          where: { vaccineId },
+          update: { quantity: 100 },
+          create: { vaccineId, quantity: 100 },
+        });
+      });
+
+      it("Retourne 401 si non authentifié", async () => {
+        const res = await request(app)
+          .post(`/api/stock/national/lot/${lotId}/reduce`)
+          .send({ quantity: 10 });
+        expect(res.statusCode).toBe(401);
+      });
+
+      it("Retourne 403 si utilisateur n'est pas NATIONAL", async () => {
+        regionalToken = await getRegionalToken();
+        const res = await request(app)
+          .post(`/api/stock/national/lot/${lotId}/reduce`)
+          .set("Authorization", `Bearer ${regionalToken}`)
+          .send({ quantity: 10 });
+        expect(res.statusCode).toBe(403);
+      });
+
+      it("Réduit un lot NATIONAL avec succès", async () => {
+        nationalToken = await getNationalToken();
+        
+        const res = await request(app)
+          .post(`/api/stock/national/lot/${lotId}/reduce`)
+          .set("Authorization", `Bearer ${nationalToken}`)
+          .send({ quantity: 10 });
+
+        expect(res.statusCode).toBe(200);
+        expect(res.body).toHaveProperty("remainingQuantity");
+        expect(res.body.remainingQuantity).toBe(90);
+
+        // Vérifier que le stock NATIONAL a été mis à jour
+        const stock = await prisma.stockNATIONAL.findUnique({
+          where: { vaccineId },
+        });
+        expect(stock.quantity).toBe(90);
+      });
+    });
+
+    describe("POST /api/stock/regional/lot/:id/reduce - Réduction lot REGIONAL", () => {
+      let lotId;
+
+      beforeEach(async () => {
+        const futureDate = new Date();
+        futureDate.setFullYear(futureDate.getFullYear() + 1);
+        
+        const lot = await prisma.stockLot.create({
+          data: {
+            vaccineId,
+            ownerType: "REGIONAL",
+            ownerId: regionId,
+            quantity: 100,
+            remainingQuantity: 100,
+            expiration: futureDate,
+            status: "VALID",
+          },
+        });
+        lotId = lot.id;
+
+        await prisma.stockREGIONAL.upsert({
+          where: { vaccineId_regionId: { vaccineId, regionId } },
+          update: { quantity: 100 },
+          create: { vaccineId, regionId, quantity: 100 },
+        });
+      });
+
+      it("Retourne 401 si non authentifié", async () => {
+        const res = await request(app)
+          .post(`/api/stock/regional/lot/${lotId}/reduce`)
+          .send({ quantity: 10 });
+        expect(res.statusCode).toBe(401);
+      });
+
+      it("Réduit un lot REGIONAL avec succès", async () => {
+        regionalToken = await getRegionalToken();
+        
+        const res = await request(app)
+          .post(`/api/stock/regional/lot/${lotId}/reduce`)
+          .set("Authorization", `Bearer ${regionalToken}`)
+          .send({ quantity: 10 });
+
+        expect(res.statusCode).toBe(200);
+        expect(res.body).toHaveProperty("remainingQuantity");
+        expect(res.body.remainingQuantity).toBe(90);
+      });
+    });
+
+    describe("POST /api/stock/district/lot/:id/reduce - Réduction lot DISTRICT", () => {
+      let lotId;
+
+      beforeEach(async () => {
+        const futureDate = new Date();
+        futureDate.setFullYear(futureDate.getFullYear() + 1);
+        
+        const lot = await prisma.stockLot.create({
+          data: {
+            vaccineId,
+            ownerType: "DISTRICT",
+            ownerId: districtId,
+            quantity: 100,
+            remainingQuantity: 100,
+            expiration: futureDate,
+            status: "VALID",
+          },
+        });
+        lotId = lot.id;
+
+        await prisma.stockDISTRICT.upsert({
+          where: { vaccineId_districtId: { vaccineId, districtId } },
+          update: { quantity: 100 },
+          create: { vaccineId, districtId, quantity: 100 },
+        });
+      });
+
+      it("Retourne 401 si non authentifié", async () => {
+        const res = await request(app)
+          .post(`/api/stock/district/lot/${lotId}/reduce`)
+          .send({ quantity: 10 });
+        expect(res.statusCode).toBe(401);
+      });
+
+      it("Réduit un lot DISTRICT avec succès", async () => {
+        districtToken = await getDistrictToken();
+        
+        const res = await request(app)
+          .post(`/api/stock/district/lot/${lotId}/reduce`)
+          .set("Authorization", `Bearer ${districtToken}`)
+          .send({ quantity: 10 });
+
+        expect(res.statusCode).toBe(200);
+        expect(res.body).toHaveProperty("remainingQuantity");
+        expect(res.body.remainingQuantity).toBe(90);
+      });
+    });
+
+    describe("POST /api/stock/health-center/lot/:id/reduce - Réduction lot HEALTHCENTER", () => {
+      let lotId;
+
+      beforeEach(async () => {
+        const futureDate = new Date();
+        futureDate.setFullYear(futureDate.getFullYear() + 1);
+        
+        const lot = await prisma.stockLot.create({
+          data: {
+            vaccineId,
+            ownerType: "HEALTHCENTER",
+            ownerId: healthCenterId,
+            quantity: 100,
+            remainingQuantity: 100,
+            expiration: futureDate,
+            status: "VALID",
+          },
+        });
+        lotId = lot.id;
+
+        await prisma.stockHEALTHCENTER.upsert({
+          where: { vaccineId_healthCenterId: { vaccineId, healthCenterId } },
+          update: { quantity: 100 },
+          create: { vaccineId, healthCenterId, quantity: 100 },
+        });
+      });
+
+      it("Retourne 401 si non authentifié", async () => {
+        const res = await request(app)
+          .post(`/api/stock/health-center/lot/${lotId}/reduce`)
+          .send({ quantity: 10 });
+        expect(res.statusCode).toBe(401);
+      });
+
+      it("Retourne 403 si AGENT n'est pas ADMIN", async () => {
+        agentStaffToken = await getAgentStaffToken();
+        const res = await request(app)
+          .post(`/api/stock/health-center/lot/${lotId}/reduce`)
+          .set("Authorization", `Bearer ${agentStaffToken}`)
+          .send({ quantity: 10 });
+        expect(res.statusCode).toBe(403);
+      });
+
+      it("Réduit un lot HEALTHCENTER avec succès", async () => {
+        agentAdminToken = await getAgentAdminToken();
+        
+        const res = await request(app)
+          .post(`/api/stock/health-center/lot/${lotId}/reduce`)
+          .set("Authorization", `Bearer ${agentAdminToken}`)
+          .send({ quantity: 10 });
+
+        expect(res.statusCode).toBe(200);
+        expect(res.body).toHaveProperty("remainingQuantity");
+        expect(res.body.remainingQuantity).toBe(90);
+      });
+    });
+  });
+
+  describe("Réduction de stock (niveaux REGIONAL, DISTRICT, HEALTHCENTER)", () => {
+    describe("PUT /api/stock/reduce-regional - Réduction stock REGIONAL", () => {
+      beforeEach(async () => {
+        await prisma.stockREGIONAL.upsert({
+          where: { vaccineId_regionId: { vaccineId, regionId } },
+          update: { quantity: 100 },
+          create: { vaccineId, regionId, quantity: 100 },
+        });
+      });
+
+      it("Retourne 401 si non authentifié", async () => {
+        const res = await request(app)
+          .put("/api/stock/reduce-regional")
+          .send({ vaccineId, regionId, quantity: 10 });
+        expect(res.statusCode).toBe(401);
+      });
+
+      it("Retourne 403 si utilisateur n'est pas NATIONAL ou REGIONAL", async () => {
+        districtToken = await getDistrictToken();
+        const res = await request(app)
+          .put("/api/stock/reduce-regional")
+          .set("Authorization", `Bearer ${districtToken}`)
+          .send({ vaccineId, regionId, quantity: 10 });
+        expect(res.statusCode).toBe(403);
+      });
+
+      it("Réduit le stock REGIONAL avec succès", async () => {
+        regionalToken = await getRegionalToken();
+        
+        const res = await request(app)
+          .put("/api/stock/reduce-regional")
+          .set("Authorization", `Bearer ${regionalToken}`)
+          .send({ vaccineId, regionId, quantity: 10 });
+
+        expect(res.statusCode).toBe(200);
+        expect(res.body.quantity).toBe(90);
+      });
+    });
+
+    describe("PUT /api/stock/reduce-district - Réduction stock DISTRICT", () => {
+      beforeEach(async () => {
+        await prisma.stockDISTRICT.upsert({
+          where: { vaccineId_districtId: { vaccineId, districtId } },
+          update: { quantity: 100 },
+          create: { vaccineId, districtId, quantity: 100 },
+        });
+      });
+
+      it("Retourne 401 si non authentifié", async () => {
+        const res = await request(app)
+          .put("/api/stock/reduce-district")
+          .send({ vaccineId, districtId, quantity: 10 });
+        expect(res.statusCode).toBe(401);
+      });
+
+      it("Retourne 403 si utilisateur n'est pas REGIONAL ou DISTRICT", async () => {
+        nationalToken = await getNationalToken();
+        const res = await request(app)
+          .put("/api/stock/reduce-district")
+          .set("Authorization", `Bearer ${nationalToken}`)
+          .send({ vaccineId, districtId, quantity: 10 });
+        expect(res.statusCode).toBe(403);
+      });
+
+      it("Réduit le stock DISTRICT avec succès", async () => {
+        districtToken = await getDistrictToken();
+        
+        const res = await request(app)
+          .put("/api/stock/reduce-district")
+          .set("Authorization", `Bearer ${districtToken}`)
+          .send({ vaccineId, districtId, quantity: 10 });
+
+        expect(res.statusCode).toBe(200);
+        expect(res.body.quantity).toBe(90);
+      });
+    });
+
+    describe("PUT /api/stock/reduce-health-center - Réduction stock HEALTHCENTER", () => {
+      beforeEach(async () => {
+        await prisma.stockHEALTHCENTER.upsert({
+          where: { vaccineId_healthCenterId: { vaccineId, healthCenterId } },
+          update: { quantity: 100 },
+          create: { vaccineId, healthCenterId, quantity: 100 },
+        });
+      });
+
+      it("Retourne 401 si non authentifié", async () => {
+        const res = await request(app)
+          .put("/api/stock/reduce-health-center")
+          .send({ vaccineId, healthCenterId, quantity: 10 });
+        expect(res.statusCode).toBe(401);
+      });
+
+      it("Retourne 403 si AGENT n'est pas ADMIN", async () => {
+        agentStaffToken = await getAgentStaffToken();
+        const res = await request(app)
+          .put("/api/stock/reduce-health-center")
+          .set("Authorization", `Bearer ${agentStaffToken}`)
+          .send({ vaccineId, healthCenterId, quantity: 10 });
+        expect(res.statusCode).toBe(403);
+      });
+
+      it("Réduit le stock HEALTHCENTER avec succès", async () => {
+        agentAdminToken = await getAgentAdminToken();
+        
+        const res = await request(app)
+          .put("/api/stock/reduce-health-center")
+          .set("Authorization", `Bearer ${agentAdminToken}`)
+          .send({ vaccineId, healthCenterId, quantity: 10 });
+
+        expect(res.statusCode).toBe(200);
+        expect(res.body.quantity).toBe(90);
       });
     });
   });

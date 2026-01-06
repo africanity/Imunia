@@ -11,6 +11,7 @@ const {
   restoreOrRecreateLotForRejectedTransfer,
 } = require("../services/stockLotService");
 const { logEventAsync } = require("../services/eventLogService");
+const { notifyAppointmentCancelled } = require("../services/notificationService");
 
 const resolveRegionIdForUser = async (user, overrideRegionId = null) => {
   // Pour SUPERADMIN, utiliser l'override si fourni
@@ -224,6 +225,191 @@ const ensureHealthCenterAccessible = async (user, healthCenterId) => {
   }
 
   return healthCenter;
+};
+
+/**
+ * Fonction utilitaire pour annuler plusieurs rendez-vous liés à des réservations de stock
+ * @param {Object} tx - Transaction Prisma
+ * @param {string[]} scheduleIds - Tableau d'IDs de rendez-vous à annuler
+ * @returns {Promise<Array>} - Tableau d'informations sur les rendez-vous annulés pour les notifications
+ */
+const cancelAppointmentsForSchedules = async (tx, scheduleIds) => {
+  if (!scheduleIds || scheduleIds.length === 0) {
+    return [];
+  }
+
+  const cancelledAppointments = [];
+
+  // Récupérer tous les rendez-vous avec leurs informations pour les notifications
+  const scheduledAppointments = await tx.childVaccineScheduled.findMany({
+    where: { id: { in: scheduleIds } },
+    include: {
+      vaccine: { select: { id: true, name: true } },
+      child: { select: { id: true, healthCenterId: true } },
+    },
+  });
+
+  // Grouper par enfant pour optimiser les mises à jour
+  const appointmentsByChild = {};
+  for (const appointment of scheduledAppointments) {
+    const childId = appointment.childId;
+    if (!appointmentsByChild[childId]) {
+      appointmentsByChild[childId] = [];
+    }
+    appointmentsByChild[childId].push(appointment);
+  }
+
+  // Fonction pour libérer une réservation
+  const releaseReservationForSchedule = async (scheduleId) => {
+    const reservation = await tx.stockReservation.findUnique({
+      where: { scheduleId },
+      include: {
+        stockLot: {
+          select: {
+            id: true,
+            vaccineId: true,
+            ownerType: true,
+            ownerId: true,
+          },
+        },
+      },
+    });
+
+    if (!reservation) {
+      return null;
+    }
+
+    // Libérer la dose si c'est un lot HEALTHCENTER
+    if (reservation.stockLot.ownerType === OWNER_TYPES.HEALTHCENTER && reservation.stockLot.ownerId) {
+      const { releaseDoseForHealthCenter } = require("../services/stockLotService");
+      await releaseDoseForHealthCenter(tx, {
+        vaccineId: reservation.stockLot.vaccineId,
+        healthCenterId: reservation.stockLot.ownerId,
+        lotId: reservation.stockLot.id,
+        quantity: reservation.quantity,
+      });
+    }
+
+    await tx.stockReservation.delete({
+      where: { id: reservation.id },
+    });
+
+    return reservation;
+  };
+
+  // Fonction pour réassigner les doses (simplifiée pour stockController)
+  const reassignDosesForVaccine = async (childId, vaccineId) => {
+    const scheduledAppointments = await tx.childVaccineScheduled.findMany({
+      where: {
+        childId,
+        vaccineId,
+      },
+      orderBy: {
+        scheduledFor: "asc",
+      },
+      select: {
+        id: true,
+        scheduledFor: true,
+        dose: true,
+      },
+    });
+
+    if (scheduledAppointments.length === 0) {
+      return;
+    }
+
+    const completedDoses = await tx.childVaccineCompleted.findMany({
+      where: {
+        childId,
+        vaccineId,
+      },
+      select: {
+        dose: true,
+      },
+    });
+
+    const completedDoseValues = completedDoses
+      .map((c) => (typeof c.dose === "number" ? c.dose : null))
+      .filter((dose) => dose != null);
+    const scheduledDoseValues = scheduledAppointments
+      .map((s) => (typeof s.dose === "number" ? s.dose : null))
+      .filter((dose) => dose != null);
+
+    const completedDoseNumbers = new Set(completedDoseValues);
+
+    const maxCompletedDose =
+      completedDoseValues.length > 0 ? Math.max(...completedDoseValues) : 0;
+    const maxScheduledDose =
+      scheduledDoseValues.length > 0 ? Math.max(...scheduledDoseValues) : 0;
+    const tempBase = Math.max(maxCompletedDose, maxScheduledDose) + 1;
+
+    // Première passe : attribuer des doses temporaires
+    for (let i = 0; i < scheduledAppointments.length; i += 1) {
+      await tx.childVaccineScheduled.update({
+        where: { id: scheduledAppointments[i].id },
+        data: { dose: tempBase + i },
+      });
+    }
+
+    // Deuxième passe : assigner les doses finales dans l'ordre chronologique
+    let currentDose = 1;
+    for (const appointment of scheduledAppointments) {
+      while (completedDoseNumbers.has(currentDose)) {
+        currentDose++;
+      }
+      await tx.childVaccineScheduled.update({
+        where: { id: appointment.id },
+        data: { dose: currentDose },
+      });
+      currentDose++;
+    }
+  };
+
+  // Fonction pour mettre à jour nextAppointment
+  const updateNextAppointment = async (childId) => {
+    const nextScheduled = await tx.childVaccineScheduled.findFirst({
+      where: { childId },
+      orderBy: { scheduledFor: "asc" },
+      select: { scheduledFor: true, vaccineId: true, plannerId: true },
+    });
+
+    await tx.children.update({
+      where: { id: childId },
+      data: {
+        nextAppointment: nextScheduled?.scheduledFor || null,
+        nextVaccineId: nextScheduled?.vaccineId || null,
+        nextAgentId: nextScheduled?.plannerId || null,
+      },
+    });
+  };
+
+  // Annuler chaque rendez-vous
+  for (const appointment of scheduledAppointments) {
+    // Libérer la réservation
+    await releaseReservationForSchedule(appointment.id);
+
+    // Supprimer le rendez-vous
+    await tx.childVaccineScheduled.delete({ where: { id: appointment.id } });
+
+    // Sauvegarder les informations pour la notification
+    cancelledAppointments.push({
+      childId: appointment.childId,
+      vaccineId: appointment.vaccineId,
+      vaccineName: appointment.vaccine?.name ?? "vaccin",
+      scheduledDate: appointment.scheduledFor,
+    });
+  }
+
+  // Réassigner les doses et mettre à jour nextAppointment pour chaque enfant
+  for (const [childId, appointments] of Object.entries(appointmentsByChild)) {
+    const vaccineId = appointments[0]?.vaccineId;
+    if (vaccineId) {
+      await reassignDosesForVaccine(childId, vaccineId);
+    }
+    await updateNextAppointment(childId);
+  }
+
+  return cancelledAppointments;
 };
 
 const deleteStockForOwner = async ({ ownerType, ownerId, vaccineId }) => {
@@ -2459,9 +2645,45 @@ const deleteLot = async (req, res, next) => {
         }
       }
 
+      // Pour SUPERADMIN uniquement et lot HEALTHCENTER : annuler les rendez-vous avant suppression
+      let appointmentsToNotify = [];
+      if (req.user.role === "SUPERADMIN" && existing.ownerType === OWNER_TYPES.HEALTHCENTER) {
+        // Récupérer toutes les réservations liées à ce lot
+        const reservations = await tx.stockReservation.findMany({
+          where: { stockLotId: id },
+          select: { scheduleId: true },
+        });
+
+        const scheduleIds = reservations.map((res) => res.scheduleId);
+
+        if (scheduleIds.length > 0) {
+          // Annuler les rendez-vous
+          appointmentsToNotify = await cancelAppointmentsForSchedules(tx, scheduleIds);
+        }
+      }
+
       // Supprimer le lot directement (sans cascade)
       deletedId = await deleteLotDirect(tx, id);
     });
+
+    // Envoyer les notifications aux parents après la suppression
+    if (appointmentsToNotify && appointmentsToNotify.length > 0) {
+      setImmediate(async () => {
+        try {
+          await Promise.all(
+            appointmentsToNotify.map((appointment) =>
+              notifyAppointmentCancelled({
+                childId: appointment.childId,
+                vaccineName: appointment.vaccineName,
+                scheduledDate: appointment.scheduledDate,
+              }),
+            ),
+          );
+        } catch (notifError) {
+          console.error("Erreur création notifications d'annulation:", notifError);
+        }
+      });
+    }
 
     res.json({ deletedId });
   } catch (error) {
@@ -2875,6 +3097,7 @@ const reduceLotHEALTHCENTER = async (req, res, next) => {
   try {
     let updatedLot = null;
     let healthCenterId = null;
+    let appointmentsToNotify = [];
 
     await prisma.$transaction(async (tx) => {
       const lot = await tx.stockLot.findUnique({
@@ -2936,8 +3159,51 @@ const reduceLotHEALTHCENTER = async (req, res, next) => {
         );
       }
 
-      // Réduire la quantité restante du lot
+      // Calculer le stock restant après diminution
       const newRemainingQuantity = lot.remainingQuantity - qty;
+
+      // Pour SUPERADMIN uniquement : vérifier et annuler les rendez-vous si nécessaire
+      if (req.user.role === "SUPERADMIN") {
+        // Récupérer toutes les réservations pour ce lot, triées par date de rendez-vous (plus récent en premier)
+        const reservations = await tx.stockReservation.findMany({
+          where: { stockLotId: lotId },
+          include: {
+            schedule: {
+              select: {
+                scheduledFor: true,
+              },
+            },
+          },
+          orderBy: {
+            schedule: {
+              scheduledFor: "desc", // Plus récent en premier
+            },
+          },
+        });
+
+        // Calculer la quantité totale réservée
+        const totalReserved = reservations.reduce((sum, res) => sum + (res.quantity || 1), 0);
+
+        // Si le stock restant est insuffisant pour toutes les réservations, annuler les rendez-vous nécessaires
+        if (newRemainingQuantity < totalReserved) {
+          // Calculer combien de rendez-vous doivent être annulés
+          let reservedAfterCancel = totalReserved;
+          const scheduleIdsToCancel = [];
+
+          for (const reservation of reservations) {
+            if (newRemainingQuantity >= reservedAfterCancel) {
+              break;
+            }
+            scheduleIdsToCancel.push(reservation.scheduleId);
+            reservedAfterCancel -= (reservation.quantity || 1);
+          }
+
+          if (scheduleIdsToCancel.length > 0) {
+            // Annuler les rendez-vous
+            appointmentsToNotify = await cancelAppointmentsForSchedules(tx, scheduleIdsToCancel);
+          }
+        }
+      }
 
       updatedLot = await tx.stockLot.update({
         where: { id: lotId },
@@ -2978,11 +3244,258 @@ const reduceLotHEALTHCENTER = async (req, res, next) => {
       });
     });
 
+    // Envoyer les notifications aux parents après la transaction
+    if (appointmentsToNotify && appointmentsToNotify.length > 0) {
+      setImmediate(async () => {
+        try {
+          await Promise.all(
+            appointmentsToNotify.map((appointment) =>
+              notifyAppointmentCancelled({
+                childId: appointment.childId,
+                vaccineName: appointment.vaccineName,
+                scheduledDate: appointment.scheduledDate,
+              }),
+            ),
+          );
+        } catch (notifError) {
+          console.error("Erreur création notifications d'annulation:", notifError);
+        }
+      });
+    }
+
     res.json(updatedLot);
   } catch (error) {
     if (error.status) {
       return res.status(error.status).json({ message: error.message });
     }
+    next(error);
+  }
+};
+
+/**
+ * GET /api/stock/health-center/impact
+ * Vérifier l'impact de la suppression d'un stock HEALTHCENTER (nombre de rendez-vous affectés)
+ */
+const getStockHealthCenterDeleteImpact = async (req, res, next) => {
+  if (req.user.role !== "SUPERADMIN") {
+    return res.status(403).json({ message: "Accès refusé" });
+  }
+
+  try {
+    const { vaccineId, healthCenterId } = req.query;
+
+    if (!vaccineId || !healthCenterId) {
+      return res.status(400).json({ message: "vaccineId et healthCenterId sont requis" });
+    }
+
+    // Trouver tous les lots de ce stock HEALTHCENTER
+    const normalizedOwnerId = normalizeOwnerIdValue(OWNER_TYPES.HEALTHCENTER, healthCenterId);
+    const lots = await prisma.stockLot.findMany({
+      where: {
+        vaccineId,
+        ownerType: OWNER_TYPES.HEALTHCENTER,
+        ownerId: normalizedOwnerId,
+      },
+      select: { id: true },
+    });
+
+    const lotIds = lots.map((lot) => lot.id);
+
+    if (lotIds.length === 0) {
+      return res.json({
+        vaccineId,
+        healthCenterId,
+        affectedAppointments: 0,
+        willCancelAppointments: false,
+      });
+    }
+
+    // Compter toutes les réservations liées à ces lots
+    const reservations = await prisma.stockReservation.findMany({
+      where: {
+        stockLotId: { in: lotIds },
+      },
+      select: { scheduleId: true },
+    });
+
+    const appointmentsCount = reservations.length;
+
+    res.json({
+      vaccineId,
+      healthCenterId,
+      affectedAppointments: appointmentsCount,
+      willCancelAppointments: appointmentsCount > 0,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /api/stock/lots/:id/impact
+ * Vérifier l'impact de la suppression d'un lot (nombre de rendez-vous affectés)
+ */
+const getLotDeleteImpact = async (req, res, next) => {
+  if (req.user.role !== "SUPERADMIN") {
+    return res.status(403).json({ message: "Accès refusé" });
+  }
+
+  try {
+    const { id: lotId } = req.params;
+
+    if (!lotId) {
+      return res.status(400).json({ message: "lotId est requis" });
+    }
+
+    // Vérifier que le lot existe et est de type HEALTHCENTER
+    const lot = await prisma.stockLot.findUnique({
+      where: { id: lotId },
+      select: {
+        id: true,
+        ownerType: true,
+        ownerId: true,
+      },
+    });
+
+    if (!lot) {
+      return res.status(404).json({ message: "Lot introuvable" });
+    }
+
+    // Seulement pour les lots HEALTHCENTER
+    if (lot.ownerType !== OWNER_TYPES.HEALTHCENTER) {
+      return res.json({
+        lotId,
+        affectedAppointments: 0,
+        willCancelAppointments: false,
+        reason: "Ce lot n'est pas un lot HEALTHCENTER",
+      });
+    }
+
+    // Compter les réservations liées à ce lot
+    const reservationsCount = await prisma.stockReservation.count({
+      where: { stockLotId: lotId },
+    });
+
+    res.json({
+      lotId,
+      affectedAppointments: reservationsCount,
+      willCancelAppointments: reservationsCount > 0,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /api/stock/lots/:id/reduce-impact
+ * Vérifier l'impact de la diminution d'un lot (nombre de rendez-vous à annuler)
+ */
+const getLotReduceImpact = async (req, res, next) => {
+  if (req.user.role !== "SUPERADMIN") {
+    return res.status(403).json({ message: "Accès refusé" });
+  }
+
+  try {
+    const { id: lotId } = req.params;
+    const { quantity } = req.query;
+    const qty = Number(quantity);
+
+    if (!lotId) {
+      return res.status(400).json({ message: "lotId est requis" });
+    }
+
+    if (!Number.isFinite(qty) || qty <= 0) {
+      return res.status(400).json({ message: "quantity doit être un nombre positif" });
+    }
+
+    // Vérifier que le lot existe et est de type HEALTHCENTER
+    const lot = await prisma.stockLot.findUnique({
+      where: { id: lotId },
+      select: {
+        id: true,
+        ownerType: true,
+        ownerId: true,
+        remainingQuantity: true,
+      },
+    });
+
+    if (!lot) {
+      return res.status(404).json({ message: "Lot introuvable" });
+    }
+
+    // Seulement pour les lots HEALTHCENTER
+    if (lot.ownerType !== OWNER_TYPES.HEALTHCENTER) {
+      return res.json({
+        lotId,
+        affectedAppointments: 0,
+        willCancelAppointments: false,
+        reason: "Ce lot n'est pas un lot HEALTHCENTER",
+      });
+    }
+
+    // Vérifier que la quantité à réduire ne dépasse pas la quantité restante
+    if (qty > lot.remainingQuantity) {
+      return res.status(400).json({
+        message: `La quantité à réduire (${qty}) dépasse la quantité restante du lot (${lot.remainingQuantity})`,
+      });
+    }
+
+    // Calculer le stock restant après diminution
+    const remainingAfterReduce = lot.remainingQuantity - qty;
+
+    // Récupérer toutes les réservations pour ce lot, triées par date de rendez-vous (plus récent en premier)
+    const reservations = await prisma.stockReservation.findMany({
+      where: { stockLotId: lotId },
+      include: {
+        schedule: {
+          select: {
+            scheduledFor: true,
+          },
+        },
+      },
+      orderBy: {
+        schedule: {
+          scheduledFor: "desc", // Plus récent en premier
+        },
+      },
+    });
+
+    // Calculer la quantité totale réservée
+    const totalReserved = reservations.reduce((sum, res) => sum + (res.quantity || 1), 0);
+
+    // Si le stock restant est suffisant pour toutes les réservations, aucun rendez-vous à annuler
+    if (remainingAfterReduce >= totalReserved) {
+      return res.json({
+        lotId,
+        affectedAppointments: 0,
+        willCancelAppointments: false,
+        remainingAfterReduce,
+        totalReserved,
+      });
+    }
+
+    // Calculer combien de rendez-vous doivent être annulés
+    // On doit annuler jusqu'à ce que le stock restant soit suffisant
+    let appointmentsToCancel = 0;
+    let reservedAfterCancel = totalReserved;
+
+    for (const reservation of reservations) {
+      if (remainingAfterReduce >= reservedAfterCancel) {
+        break;
+      }
+      appointmentsToCancel++;
+      reservedAfterCancel -= (reservation.quantity || 1);
+    }
+
+    res.json({
+      lotId,
+      affectedAppointments: appointmentsToCancel,
+      willCancelAppointments: appointmentsToCancel > 0,
+      remainingAfterReduce,
+      totalReserved,
+      reservedAfterCancel,
+    });
+  } catch (error) {
     next(error);
   }
 };
@@ -3210,11 +3723,67 @@ const deleteStockHEALTHCENTER = async (req, res, next) => {
       await ensureHealthCenterAccessible(req.user, healthCenterId);
     }
 
+    // Pour SUPERADMIN uniquement : annuler les rendez-vous avant suppression
+    let appointmentsToNotify = [];
+    if (req.user.role === "SUPERADMIN") {
+      await prisma.$transaction(async (tx) => {
+        // Trouver tous les lots de ce stock HEALTHCENTER
+        const normalizedOwnerId = normalizeOwnerIdValue(OWNER_TYPES.HEALTHCENTER, healthCenterId);
+        const lots = await tx.stockLot.findMany({
+          where: {
+            vaccineId,
+            ownerType: OWNER_TYPES.HEALTHCENTER,
+            ownerId: normalizedOwnerId,
+          },
+          select: { id: true },
+        });
+
+        const lotIds = lots.map((lot) => lot.id);
+
+        if (lotIds.length > 0) {
+          // Récupérer toutes les réservations liées à ces lots
+          const reservations = await tx.stockReservation.findMany({
+            where: {
+              stockLotId: { in: lotIds },
+            },
+            select: { scheduleId: true },
+          });
+
+          const scheduleIds = reservations.map((res) => res.scheduleId);
+
+          if (scheduleIds.length > 0) {
+            // Annuler les rendez-vous
+            appointmentsToNotify = await cancelAppointmentsForSchedules(tx, scheduleIds);
+          }
+        }
+      });
+    }
+
     await deleteStockForOwner({
       ownerType: OWNER_TYPES.HEALTHCENTER,
       ownerId: healthCenterId,
       vaccineId,
     });
+
+    // Envoyer les notifications aux parents après la suppression
+    if (appointmentsToNotify.length > 0) {
+      setImmediate(async () => {
+        try {
+          await Promise.all(
+            appointmentsToNotify.map((appointment) =>
+              notifyAppointmentCancelled({
+                childId: appointment.childId,
+                vaccineName: appointment.vaccineName,
+                scheduledDate: appointment.scheduledDate,
+              }),
+            ),
+          );
+        } catch (notifError) {
+          console.error("Erreur création notifications d'annulation:", notifError);
+        }
+      });
+    }
+
     res.json({ success: true });
   } catch (error) {
     next(error);
@@ -4976,4 +5545,7 @@ module.exports = {
   rejectPendingTransfer,
   cancelPendingTransfer,
   getTransferHistory,
+  getStockHealthCenterDeleteImpact,
+  getLotDeleteImpact,
+  getLotReduceImpact,
 };

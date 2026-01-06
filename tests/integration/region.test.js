@@ -36,7 +36,7 @@ describe("Region API", () => {
         password: hashedPassword,
         firstName: "National",
         lastName: "Admin",
-        phone: "123456789",
+        
         role: "NATIONAL",
         isActive: true,
         emailVerified: true,
@@ -72,7 +72,7 @@ describe("Region API", () => {
           password: hashedPassword,
           firstName: "National",
           lastName: "Admin",
-          phone: "123456789",
+          
         role: "NATIONAL",
         isActive: true,
           emailVerified: true,
@@ -145,7 +145,7 @@ describe("Region API", () => {
         password,
             firstName: "Regional",
             lastName: "User",
-            phone: "987654321",
+            
         role: "REGIONAL",
         isActive: true,
             emailVerified: true,
@@ -239,7 +239,7 @@ describe("Region API", () => {
             password,
             firstName: "District",
             lastName: "User",
-            phone: "555555555",
+            
             role: "DISTRICT",
             isActive: true,
             emailVerified: true,
@@ -383,7 +383,7 @@ describe("Region API", () => {
             password,
             firstName: "Regional",
             lastName: "User",
-            phone: "111111111",
+            
             role: "REGIONAL",
             isActive: true,
             emailVerified: true,
@@ -484,7 +484,7 @@ describe("Region API", () => {
             password,
             firstName: "Regional",
             lastName: "User",
-            phone: "222222222",
+            
             role: "REGIONAL",
             isActive: true,
             emailVerified: true,
@@ -594,7 +594,7 @@ describe("Region API", () => {
             password,
             firstName: "Regional",
             lastName: "User",
-            phone: "333333333",
+            
             role: "REGIONAL",
             isActive: true,
             emailVerified: true,
@@ -717,7 +717,7 @@ describe("Region API", () => {
             password,
             firstName: "Regional",
             lastName: "User",
-            phone: "444444444",
+            
             role: "REGIONAL",
             isActive: true,
             emailVerified: true,

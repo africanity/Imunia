@@ -1385,29 +1385,24 @@ const deleteVaccine = async (req, res, next) => {
 
     // Supprimer toutes les relations dépendantes dans une transaction
     await prisma.$transaction(async (tx) => {
-      // 1. Récupérer les informations des rendez-vous programmés avant suppression
+      // 1. Récupérer les IDs des rendez-vous programmés avant suppression
       const scheduledVaccines = await tx.childVaccineScheduled.findMany({
         where: { vaccineId },
         select: {
           id: true,
-          childId: true,
-          scheduledFor: true,
-          vaccine: { select: { name: true } },
         },
       });
 
-      // Sauvegarder les informations pour les notifications
-      appointmentsToNotify = scheduledVaccines.map((sv) => ({
-        childId: sv.childId,
-        vaccineName: sv.vaccine?.name ?? vaccine.name,
-        scheduledDate: sv.scheduledFor,
-      }));
-
       const scheduledIds = scheduledVaccines.map((sv) => sv.id);
+      
+      // Annuler les rendez-vous avec libération des réservations et mise à jour
       if (scheduledIds.length > 0) {
-        await tx.stockReservation.deleteMany({
-          where: { scheduleId: { in: scheduledIds } },
-        });
+        appointmentsToNotify = await cancelMultipleScheduledVaccines(tx, scheduledIds);
+        // Ajouter le nom du vaccin aux notifications
+        appointmentsToNotify = appointmentsToNotify.map((apt) => ({
+          ...apt,
+          vaccineName: apt.vaccineName || vaccine.name,
+        }));
       }
 
       // 2. Supprimer les enregistrements de vaccination des enfants
@@ -2712,6 +2707,68 @@ const updateScheduledVaccine = async (req, res, next) => {
     }
 };
 
+/**
+ * Fonction utilitaire pour annuler plusieurs rendez-vous avec notifications
+ * @param {Object} tx - Transaction Prisma
+ * @param {string[]} scheduleIds - Tableau d'IDs de rendez-vous à annuler
+ * @returns {Promise<Array>} - Tableau d'informations sur les rendez-vous annulés pour les notifications
+ */
+const cancelMultipleScheduledVaccines = async (tx, scheduleIds) => {
+  if (!scheduleIds || scheduleIds.length === 0) {
+    return [];
+  }
+
+  const cancelledAppointments = [];
+
+  // Récupérer tous les rendez-vous avec leurs informations pour les notifications
+  const scheduledAppointments = await tx.childVaccineScheduled.findMany({
+    where: { id: { in: scheduleIds } },
+    include: {
+      vaccine: { select: { id: true, name: true } },
+      child: { select: { id: true, healthCenterId: true } },
+    },
+  });
+
+  // Grouper par enfant pour optimiser les mises à jour
+  const appointmentsByChild = {};
+  for (const appointment of scheduledAppointments) {
+    const childId = appointment.childId;
+    if (!appointmentsByChild[childId]) {
+      appointmentsByChild[childId] = [];
+    }
+    appointmentsByChild[childId].push(appointment);
+  }
+
+  // Annuler chaque rendez-vous
+  for (const appointment of scheduledAppointments) {
+    // Libérer la réservation
+    await releaseReservationForSchedule(tx, appointment.id, { consume: false });
+
+    // Supprimer le rendez-vous
+    await tx.childVaccineScheduled.delete({ where: { id: appointment.id } });
+
+    // Sauvegarder les informations pour la notification
+    cancelledAppointments.push({
+      childId: appointment.childId,
+      vaccineId: appointment.vaccineId,
+      vaccineName: appointment.vaccine?.name ?? "vaccin",
+      scheduledDate: appointment.scheduledFor,
+    });
+  }
+
+  // Réassigner les doses et mettre à jour nextAppointment pour chaque enfant
+  for (const [childId, appointments] of Object.entries(appointmentsByChild)) {
+    // Récupérer le vaccineId (tous les rendez-vous d'un enfant ont le même vaccineId dans ce contexte)
+    const vaccineId = appointments[0]?.vaccineId;
+    if (vaccineId) {
+      await reassignDosesForVaccine(tx, childId, vaccineId);
+    }
+    await updateNextAppointment(tx, childId);
+  }
+
+  return cancelledAppointments;
+};
+
 const cancelScheduledVaccine = async (req, res, next) => {
   if (req.user.role !== "AGENT" || !req.user.healthCenterId) {
     return res.status(403).json({ message: "Accès refusé" });
@@ -2837,6 +2894,48 @@ const cancelScheduledVaccine = async (req, res, next) => {
   }
 };
 
+/**
+ * GET /api/vaccines/:id/impact
+ * Vérifier l'impact de la suppression d'un vaccin (nombre de rendez-vous affectés)
+ */
+const getVaccineDeleteImpact = async (req, res, next) => {
+  if (!["SUPERADMIN", "NATIONAL"].includes(req.user.role)) {
+    return res.status(403).json({ message: "Accès refusé" });
+  }
+
+  try {
+    const { id: vaccineId } = req.params;
+
+    if (!vaccineId) {
+      return res.status(400).json({ message: "vaccineId est requis" });
+    }
+
+    // Vérifier que le vaccin existe
+    const vaccine = await prisma.vaccine.findUnique({
+      where: { id: vaccineId },
+      select: { id: true, name: true },
+    });
+
+    if (!vaccine) {
+      return res.status(404).json({ message: "Vaccin non trouvé" });
+    }
+
+    // Compter tous les rendez-vous programmés pour ce vaccin
+    const appointmentsCount = await prisma.childVaccineScheduled.count({
+      where: { vaccineId },
+    });
+
+    res.json({
+      vaccineId,
+      vaccineName: vaccine.name,
+      affectedAppointments: appointmentsCount,
+      willCancelAppointments: appointmentsCount > 0,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
     createVaccine,
     createVaccineCalendar,
@@ -2855,4 +2954,5 @@ module.exports = {
     deleteVaccine,
     completeVaccine,
     missVaccine,
+    getVaccineDeleteImpact,
 };

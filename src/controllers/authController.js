@@ -7,6 +7,7 @@ const {
   rebuildAllVaccinationBuckets,
 } = require("../services/vaccineBucketService");
 const { sendPasswordResetCode } = require("../services/emailService");
+const { logEventAsync } = require("../services/eventLogService");
 
 const ensureNationalBuckets = async () => {
   await rebuildAllVaccinationBuckets();
@@ -181,6 +182,26 @@ const login = async (req, res, next) => {
     const accessToken = tokenService.signAccessToken(payload);
     const refreshToken = tokenService.signRefreshToken(payload);
 
+    // Enregistrer l'événement de connexion
+    logEventAsync({
+      type: "AUTH",
+      action: "LOGIN",
+      user: {
+        id: user.id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        role: user.role,
+      },
+      details: {
+        role: user.role,
+        agentLevel: user.agentLevel,
+        region: user.region ? { id: user.region.id, name: user.region.name } : null,
+        district: user.district ? { id: user.district.id, name: user.district.name } : null,
+        healthCenter: user.healthCenter ? { id: user.healthCenter.id, name: user.healthCenter.name } : null,
+      },
+    });
+
     res.json({ accessToken, refreshToken, expiredLots: expiredLotsSummary });
   } catch (error) {
     next(error);
@@ -239,6 +260,21 @@ const refreshToken = async (req, res, next) => {
 
 const logout = async (req, res, next) => {
   try {
+    // Enregistrer l'événement de déconnexion
+    if (req.user) {
+      logEventAsync({
+        type: "AUTH",
+        action: "LOGOUT",
+        user: {
+          id: req.user.id,
+          firstName: req.user.firstName,
+          lastName: req.user.lastName,
+          email: req.user.email,
+          role: req.user.role,
+        },
+      });
+    }
+
     res.status(204).send();
   } catch (error) {
     next(error);

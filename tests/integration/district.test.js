@@ -68,7 +68,7 @@ describe("District API", () => {
           password: hashedPassword,
           firstName: "National",
         lastName: "Admin",
-          phone: "123456789",
+          
         role: "NATIONAL",
         isActive: true,
           emailVerified: true,
@@ -98,7 +98,7 @@ describe("District API", () => {
           password: regionalHashedPassword,
           firstName: "Regional",
           lastName: "User",
-          phone: "987654321",
+          
           role: "REGIONAL",
           isActive: true,
           emailVerified: true,
@@ -140,7 +140,7 @@ describe("District API", () => {
             password: hashedPassword,
             firstName: "National",
             lastName: "Admin",
-            phone: "123456789",
+            
             role: "NATIONAL",
             isActive: true,
             emailVerified: true,
@@ -161,7 +161,7 @@ describe("District API", () => {
             password: hashedPassword,
             firstName: "Regional",
             lastName: "User",
-            phone: "987654321",
+            
             role: "REGIONAL",
             isActive: true,
             emailVerified: true,
@@ -438,7 +438,7 @@ describe("District API", () => {
           password,
           firstName: "District",
         lastName: "User",
-          phone: "111111111",
+          
           role: "DISTRICT",
           isActive: true,
           emailVerified: true,
@@ -512,7 +512,7 @@ describe("District API", () => {
           password,
           firstName: "Regional",
           lastName: "NoRegion",
-          phone: "999999999",
+          
           role: "REGIONAL",
           isActive: true,
           emailVerified: true,
@@ -610,7 +610,7 @@ describe("District API", () => {
             password,
             firstName: "Other",
             lastName: "Regional",
-            phone: "888888888",
+            
             role: "REGIONAL",
             isActive: true,
             emailVerified: true,
@@ -768,7 +768,7 @@ describe("District API", () => {
             firstName: "District",
             lastName: "User",
             email: "test@example.com",
-            phone: "123456789",
+            
             districtId: "fake-id",
           });
         expect(res.statusCode).toBe(401);
@@ -798,7 +798,7 @@ describe("District API", () => {
             firstName: "District",
             lastName: "User",
             email: "test@example.com",
-            phone: "123456789",
+            
             districtId: districtId,
           });
         expect(res.statusCode).toBe(403);
@@ -815,7 +815,7 @@ describe("District API", () => {
             firstName: "District",
             lastName: "User",
             email: "test@example.com",
-            phone: "123456789",
+            
             // districtId manquant
           });
         expect(res.statusCode).toBe(400);
@@ -845,7 +845,7 @@ describe("District API", () => {
             // firstName manquant
             lastName: "User",
             email: "test@example.com",
-            phone: "123456789",
+            
             districtId: districtId,
           });
         expect(res.statusCode).toBe(400);
@@ -863,7 +863,7 @@ describe("District API", () => {
         password,
             firstName: "Regional",
             lastName: "NoRegion",
-            phone: "999999999",
+            
             role: "REGIONAL",
         isActive: true,
             emailVerified: true,
@@ -884,7 +884,7 @@ describe("District API", () => {
               firstName: "District",
               lastName: "User",
               email: "test@example.com",
-              phone: "123456789",
+              
               districtId: "fake-id",
             });
           expect(res.statusCode).toBe(400);
@@ -901,7 +901,7 @@ describe("District API", () => {
             firstName: "District",
             lastName: "User",
             email: "test@example.com",
-            phone: "123456789",
+            
             districtId: fakeDistrictId,
           });
         expect(res.statusCode).toBe(404);
@@ -935,7 +935,7 @@ describe("District API", () => {
             password,
             firstName: "Other",
             lastName: "Regional",
-            phone: "888888888",
+            
             role: "REGIONAL",
             isActive: true,
             emailVerified: true,
@@ -964,7 +964,7 @@ describe("District API", () => {
             firstName: "District",
             lastName: "User",
             email: "test@example.com",
-            phone: "123456789",
+            
             districtId: districtId,
           });
         expect(res.statusCode).toBe(403);
@@ -998,7 +998,7 @@ describe("District API", () => {
             firstName: "First",
             lastName: "District",
             email: existingEmail,
-            phone: "111111111",
+            
             districtId: districtId,
           });
         expect(firstRes.statusCode).toBe(201);
@@ -1011,7 +1011,7 @@ describe("District API", () => {
             firstName: "Second",
             lastName: "District",
             email: existingEmail,
-            phone: "222222222",
+            
             districtId: districtId,
           });
         expect(secondRes.statusCode).toBe(409);
@@ -1051,7 +1051,7 @@ describe("District API", () => {
             firstName: "District",
             lastName: "User",
             email: districtEmail,
-            phone: "987654321",
+            
             districtId: districtId,
           });
 
@@ -1118,7 +1118,7 @@ describe("District API", () => {
             firstName: "District",
             lastName: "User",
             email: districtEmail,
-            phone: "987654321",
+            
             districtId: districtId,
           });
         expect(createRes.statusCode).toBe(201);
@@ -1156,7 +1156,7 @@ describe("District API", () => {
             password,
             firstName: "Regional",
             lastName: "User",
-            phone: "777777777",
+            
             role: "REGIONAL",
             isActive: true,
             emailVerified: true,
@@ -1200,7 +1200,7 @@ describe("District API", () => {
             password,
             firstName: "Other",
             lastName: "Regional",
-            phone: "888888888",
+            
             role: "REGIONAL",
             isActive: true,
             emailVerified: true,
@@ -1230,7 +1230,7 @@ describe("District API", () => {
             firstName: "District",
             lastName: "User",
             email: districtEmail,
-            phone: "987654321",
+            
             districtId: districtId,
           });
         expect(createRes.statusCode).toBe(201);
@@ -1287,7 +1287,7 @@ describe("District API", () => {
             firstName: "District",
         lastName: "User",
             email: districtEmail,
-            phone: "987654321",
+            
             districtId: district1Id,
           });
         expect(createRes.statusCode).toBe(201);
@@ -1349,7 +1349,7 @@ describe("District API", () => {
             firstName: "District",
             lastName: "User",
             email: districtEmail,
-            phone: "987654321",
+            
             districtId: districtId,
           });
         expect(createRes.statusCode).toBe(201);
@@ -1402,7 +1402,7 @@ describe("District API", () => {
             firstName: "District",
             lastName: "User",
             email: districtEmail,
-            phone: "987654321",
+            
             districtId: districtId,
           });
         expect(createRes.statusCode).toBe(201);

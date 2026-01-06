@@ -1,4 +1,7 @@
-require("dotenv").config();
+// Ne charger .env que si on n'est pas en mode test (où jest.env.js charge déjà .env.test)
+if (process.env.NODE_ENV !== "test") {
+  require("dotenv").config();
+}
 
 const express = require("express");
 const prisma = require("./config/prismaClient");

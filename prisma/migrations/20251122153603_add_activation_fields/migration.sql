@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "StockREGIONAL" ALTER COLUMN "quantity" SET DEFAULT 0;

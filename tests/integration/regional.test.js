@@ -41,7 +41,7 @@ describe("User API - REGIONAL", () => {
         password: hashedPassword,
         firstName: "National",
         lastName: "Admin",
-        phone: "123456789",
+        
         role: "NATIONAL",
         isActive: true,
         emailVerified: true,
@@ -78,7 +78,7 @@ describe("User API - REGIONAL", () => {
             password: hashedPassword,
             firstName: "National",
             lastName: "Admin",
-            phone: "123456789",
+            
             role: "NATIONAL",
             isActive: true,
             emailVerified: true,
@@ -146,7 +146,7 @@ describe("User API - REGIONAL", () => {
             firstName: "Regional",
             lastName: "User",
             email: "test@example.com",
-            phone: "123456789",
+            
             regionId: "fake-id",
           });
         expect(res.statusCode).toBe(401);
@@ -171,7 +171,7 @@ describe("User API - REGIONAL", () => {
             password,
             firstName: "Regional",
             lastName: "User",
-            phone: "987654321",
+            
             role: "REGIONAL",
             isActive: true,
             emailVerified: true,
@@ -194,7 +194,7 @@ describe("User API - REGIONAL", () => {
             firstName: "Another",
             lastName: "Regional",
             email: "another@example.com",
-            phone: "111111111",
+            
             regionId: regionId,
           });
         expect(res.statusCode).toBe(403);
@@ -211,7 +211,7 @@ describe("User API - REGIONAL", () => {
             firstName: "Regional",
             lastName: "User",
             email: "test@example.com",
-            phone: "123456789",
+            
             // regionId manquant
           });
         expect(res.statusCode).toBe(400);
@@ -233,7 +233,7 @@ describe("User API - REGIONAL", () => {
             // firstName manquant
             lastName: "User",
             email: "test@example.com",
-            phone: "123456789",
+            
             regionId: regionId,
           });
         expect(res.statusCode).toBe(400);
@@ -255,7 +255,7 @@ describe("User API - REGIONAL", () => {
             firstName: "Regional",
             lastName: "User",
             // email manquant
-            phone: "123456789",
+            
             regionId: regionId,
           });
         expect(res.statusCode).toBe(400);
@@ -271,7 +271,7 @@ describe("User API - REGIONAL", () => {
             firstName: "Regional",
             lastName: "User",
             email: "test@example.com",
-            phone: "123456789",
+            
             regionId: fakeRegionId,
           });
         expect(res.statusCode).toBe(400);
@@ -297,7 +297,7 @@ describe("User API - REGIONAL", () => {
             firstName: "First",
             lastName: "Regional",
             email: existingEmail,
-            phone: "111111111",
+            
             regionId: regionId,
           });
         expect(firstRes.statusCode).toBe(201);
@@ -310,7 +310,7 @@ describe("User API - REGIONAL", () => {
             firstName: "Second",
             lastName: "Regional",
             email: existingEmail,
-            phone: "222222222",
+            
             regionId: regionId,
           });
         expect(secondRes.statusCode).toBe(409);
@@ -343,7 +343,7 @@ describe("User API - REGIONAL", () => {
             firstName: "Regional",
             lastName: "User",
             email: regionalEmail,
-            phone: "987654321",
+            
             regionId: regionId,
           });
 
@@ -392,7 +392,7 @@ describe("User API - REGIONAL", () => {
             firstName: "Regional",
             lastName: "User",
             email: regionalEmail,
-            phone: "987654321",
+            
             regionId: regionId,
           });
         expect(createRes.statusCode).toBe(201);
@@ -427,7 +427,7 @@ describe("User API - REGIONAL", () => {
             firstName: "Regional",
             lastName: "User",
             email: regionalEmail,
-            phone: "987654321",
+            
             regionId: regionId,
           });
         expect(createRes.statusCode).toBe(201);
@@ -462,7 +462,7 @@ describe("User API - REGIONAL", () => {
             firstName: "Regional",
             lastName: "User",
             email: regionalEmail,
-            phone: "987654321",
+            
             regionId: regionId,
           });
         expect(createRes.statusCode).toBe(201);
@@ -491,7 +491,7 @@ describe("User API - REGIONAL", () => {
             confirmPassword: "motdepasse",
           });
         expect(res.statusCode).toBe(400);
-        expect(res.body.message).toBe("Activation invalide.");
+        expect(res.body.message).toBe("Utilisateur non trouvé.");
       });
 
       it("Retourne 400 si user déjà actif", async () => {
@@ -511,7 +511,7 @@ describe("User API - REGIONAL", () => {
             password,
             firstName: "Regional",
             lastName: "User",
-            phone: "987654321",
+            
             role: "REGIONAL",
             isActive: true,
             emailVerified: true,
@@ -527,7 +527,7 @@ describe("User API - REGIONAL", () => {
             confirmPassword: "motdepasse",
           });
         expect(res.statusCode).toBe(400);
-        expect(res.body.message).toBe("Activation invalide.");
+        expect(res.body.message).toBe("Ce compte est déjà actif.");
       });
     });
 
@@ -551,7 +551,7 @@ describe("User API - REGIONAL", () => {
             firstName: "Regional",
             lastName: "User",
             email: regionalEmail,
-            phone: "987654321",
+            
             regionId: regionId,
           });
         expect(createRes.statusCode).toBe(201);
@@ -619,7 +619,7 @@ describe("User API - REGIONAL", () => {
             password,
             firstName: "Regional",
             lastName: "User",
-            phone: "987654321",
+            
             role: "REGIONAL",
             isActive: true,
             emailVerified: true,
@@ -678,7 +678,7 @@ describe("User API - REGIONAL", () => {
               firstName: "Regional",
               lastName: "User",
               email: regionalEmail,
-              phone: "987654321",
+              
               regionId: regionId,
             });
           expect(createRes.statusCode).toBe(201);
@@ -726,7 +726,7 @@ describe("User API - REGIONAL", () => {
             firstName: "Regional",
             lastName: "User",
             email: regionalEmail,
-            phone: "987654321",
+            
             regionId: region1Id,
           });
         expect(createRes.statusCode).toBe(201);
@@ -782,7 +782,7 @@ describe("User API - REGIONAL", () => {
             password,
             firstName: "Regional",
             lastName: "User",
-            phone: "987654321",
+            
             role: "REGIONAL",
             isActive: true,
             emailVerified: true,
@@ -837,7 +837,7 @@ describe("User API - REGIONAL", () => {
             firstName: "Regional",
             lastName: "User",
             email: regionalEmail,
-            phone: "987654321",
+            
             regionId: regionId,
           });
         expect(createRes.statusCode).toBe(201);
