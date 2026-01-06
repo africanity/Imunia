@@ -98,7 +98,7 @@ describe("HealthCenter API", () => {
           password: hashedPassword,
           firstName: "National",
           lastName: "Admin",
-          phone: "123456789",
+          
           role: "NATIONAL",
           isActive: true,
           emailVerified: true,
@@ -136,7 +136,7 @@ describe("HealthCenter API", () => {
           password: regionalHashedPassword,
           firstName: "Regional",
           lastName: "User",
-          phone: "987654321",
+          
           role: "REGIONAL",
           isActive: true,
           emailVerified: true,
@@ -167,7 +167,7 @@ describe("HealthCenter API", () => {
           password: districtHashedPassword,
           firstName: "District",
           lastName: "User",
-          phone: "111111111",
+          
           role: "DISTRICT",
           isActive: true,
           emailVerified: true,
@@ -198,7 +198,7 @@ describe("HealthCenter API", () => {
           password: agentAdminHashedPassword,
           firstName: "Agent",
           lastName: "Admin",
-          phone: "222222222",
+          
           role: "AGENT",
           agentLevel: "ADMIN",
           isActive: true,
@@ -245,7 +245,7 @@ describe("HealthCenter API", () => {
             password: hashedPassword,
             firstName: "National",
             lastName: "Admin",
-            phone: "123456789",
+            
             role: "NATIONAL",
             isActive: true,
             emailVerified: true,
@@ -266,7 +266,7 @@ describe("HealthCenter API", () => {
               password: hashedPassword,
               firstName: "Regional",
               lastName: "User",
-              phone: "987654321",
+              
               role: "REGIONAL",
               isActive: true,
               emailVerified: true,
@@ -294,7 +294,7 @@ describe("HealthCenter API", () => {
               password: hashedPassword,
               firstName: "District",
               lastName: "User",
-              phone: "111111111",
+              
               role: "DISTRICT",
               isActive: true,
               emailVerified: true,
@@ -322,7 +322,7 @@ describe("HealthCenter API", () => {
               password: hashedPassword,
               firstName: "Agent",
               lastName: "Admin",
-              phone: "222222222",
+              
               role: "AGENT",
               agentLevel: "ADMIN",
               isActive: true,
@@ -429,7 +429,7 @@ describe("HealthCenter API", () => {
             password: hashedPassword,
             firstName: "District",
             lastName: "NoDistrict",
-            phone: "999999999",
+            
             role: "DISTRICT",
             isActive: true,
             emailVerified: true,
@@ -549,7 +549,7 @@ describe("HealthCenter API", () => {
             password: otherRegionalHashedPassword,
             firstName: "Other",
             lastName: "Regional",
-            phone: "333333333",
+            
             role: "REGIONAL",
             isActive: true,
             emailVerified: true,
@@ -579,7 +579,7 @@ describe("HealthCenter API", () => {
             password: otherDistrictHashedPassword,
             firstName: "Other",
             lastName: "District",
-            phone: "444444444",
+            
             role: "DISTRICT",
             isActive: true,
             emailVerified: true,
@@ -639,7 +639,7 @@ describe("HealthCenter API", () => {
             password: hashedPassword,
             firstName: "District",
             lastName: "NoDistrict2",
-            phone: "888888888",
+            
             role: "DISTRICT",
             isActive: true,
             emailVerified: true,
@@ -741,7 +741,7 @@ describe("HealthCenter API", () => {
             password: otherRegionalHashedPassword,
             firstName: "Other",
             lastName: "Regional2",
-            phone: "555555555",
+            
             role: "REGIONAL",
             isActive: true,
             emailVerified: true,
@@ -771,7 +771,7 @@ describe("HealthCenter API", () => {
             password: otherDistrictHashedPassword,
             firstName: "Other",
             lastName: "District2",
-            phone: "666666666",
+            
             role: "DISTRICT",
             isActive: true,
             emailVerified: true,
@@ -923,7 +923,7 @@ describe("HealthCenter API", () => {
             firstName: "Agent",
             lastName: "Admin",
             email: "agent@example.com",
-            phone: "123456789",
+            
             healthCenterId: healthCenterId,
           });
         expect(res.statusCode).toBe(401);
@@ -937,7 +937,7 @@ describe("HealthCenter API", () => {
             firstName: "Agent",
             lastName: "Admin",
             email: "agent@example.com",
-            phone: "123456789",
+            
             healthCenterId: healthCenterId,
           });
         expect(res.statusCode).toBe(403);
@@ -954,7 +954,7 @@ describe("HealthCenter API", () => {
             firstName: "Agent",
             lastName: "Admin",
             email: "agent@example.com",
-            phone: "123456789",
+            
           });
         expect(res.statusCode).toBe(400);
         expect(res.body.message).toContain("champs obligatoires");
@@ -967,7 +967,7 @@ describe("HealthCenter API", () => {
           .send({
             lastName: "Admin",
             email: "agent@example.com",
-            phone: "123456789",
+            
             healthCenterId: healthCenterId,
           });
         expect(res.statusCode).toBe(400);
@@ -984,7 +984,7 @@ describe("HealthCenter API", () => {
             password: hashedPassword,
             firstName: "District",
             lastName: "NoDistrict3",
-            phone: "777777777",
+            
             role: "DISTRICT",
             isActive: true,
             emailVerified: true,
@@ -1005,7 +1005,7 @@ describe("HealthCenter API", () => {
               firstName: "Agent",
               lastName: "Admin",
               email: "agent@example.com",
-              phone: "123456789",
+              
               healthCenterId: healthCenterId,
             });
           expect([401, 403]).toContain(res.statusCode);
@@ -1022,7 +1022,7 @@ describe("HealthCenter API", () => {
             firstName: "Agent",
             lastName: "Admin",
             email: "agent@example.com",
-            phone: "123456789",
+            
             healthCenterId: healthCenterId,
           });
         expect(res.statusCode).toBe(400);
@@ -1038,7 +1038,7 @@ describe("HealthCenter API", () => {
             firstName: "Agent",
             lastName: "Admin",
             email: "agent@example.com",
-            phone: "123456789",
+            
             healthCenterId: fakeId,
           });
         expect(res.statusCode).toBe(403);
@@ -1070,7 +1070,7 @@ describe("HealthCenter API", () => {
             password: otherRegionalHashedPassword,
             firstName: "Other",
             lastName: "Regional3",
-            phone: "101010101",
+            
             role: "REGIONAL",
             isActive: true,
             emailVerified: true,
@@ -1100,7 +1100,7 @@ describe("HealthCenter API", () => {
             password: otherDistrictHashedPassword,
             firstName: "Other",
             lastName: "District3",
-            phone: "202020202",
+            
             role: "DISTRICT",
             isActive: true,
             emailVerified: true,
@@ -1129,7 +1129,7 @@ describe("HealthCenter API", () => {
             firstName: "Agent",
             lastName: "Admin",
             email: `agent-${Date.now()}@example.com`,
-            phone: "123456789",
+            
             healthCenterId: otherHealthCenterId,
           });
         expect(res.statusCode).toBe(403);
@@ -1148,7 +1148,7 @@ describe("HealthCenter API", () => {
             firstName: "Agent",
             lastName: "Admin1",
             email: duplicateEmail,
-            phone: "111111111",
+            
             healthCenterId: healthCenterId,
           });
         expect(firstRes.statusCode).toBe(201);
@@ -1161,7 +1161,7 @@ describe("HealthCenter API", () => {
             firstName: "Agent",
             lastName: "Admin2",
             email: duplicateEmail,
-            phone: "222222222",
+            
             healthCenterId: healthCenterId,
           });
         expect(secondRes.statusCode).toBe(409);
@@ -1181,7 +1181,7 @@ describe("HealthCenter API", () => {
             firstName: "Agent",
             lastName: "Admin",
             email: uniqueEmail,
-            phone: "123456789",
+            
             healthCenterId: healthCenterId,
           });
 
@@ -1253,7 +1253,7 @@ describe("HealthCenter API", () => {
             password: hashedPassword,
             firstName: "Regional",
             lastName: "User",
-            phone: "303030303",
+            
             role: "REGIONAL",
             isActive: true,
             emailVerified: true,
@@ -1298,7 +1298,7 @@ describe("HealthCenter API", () => {
             password: otherRegionalHashedPassword,
             firstName: "Other",
             lastName: "Regional4",
-            phone: "404040404",
+            
             role: "REGIONAL",
             isActive: true,
             emailVerified: true,
@@ -1328,7 +1328,7 @@ describe("HealthCenter API", () => {
             password: otherDistrictHashedPassword,
             firstName: "Other",
             lastName: "District4",
-            phone: "505050505",
+            
             role: "DISTRICT",
             isActive: true,
             emailVerified: true,
@@ -1379,7 +1379,7 @@ describe("HealthCenter API", () => {
             firstName: "Agent",
             lastName: "Admin2",
             email: uniqueEmail,
-            phone: "123456789",
+            
             healthCenterId: healthCenterId,
           });
         expect(createRes.statusCode).toBe(201);
@@ -1451,7 +1451,7 @@ describe("HealthCenter API", () => {
             firstName: "Agent",
             lastName: "Admin3",
             email: uniqueEmail,
-            phone: "123456789",
+            
             healthCenterId: healthCenterId,
           });
         expect(createRes.statusCode).toBe(201);
@@ -1483,7 +1483,7 @@ describe("HealthCenter API", () => {
             firstName: "Agent",
             lastName: "Staff",
             email: "agent@example.com",
-            phone: "123456789",
+            
             healthCenterId: healthCenterId,
           });
         expect(res.statusCode).toBe(401);
@@ -1497,7 +1497,7 @@ describe("HealthCenter API", () => {
             firstName: "Agent",
             lastName: "Staff",
             email: "agent@example.com",
-            phone: "123456789",
+            
             healthCenterId: healthCenterId,
           });
         expect(res.statusCode).toBe(403);
@@ -1512,7 +1512,7 @@ describe("HealthCenter API", () => {
             firstName: "Agent",
             lastName: "Staff",
             email: "agent@example.com",
-            phone: "123456789",
+            
             healthCenterId: healthCenterId,
           });
         expect(res.statusCode).toBe(403);
@@ -1529,7 +1529,7 @@ describe("HealthCenter API", () => {
             firstName: "Agent",
             lastName: "Staff",
             email: "agent@example.com",
-            phone: "123456789",
+            
           });
         expect(res.statusCode).toBe(400);
         expect(res.body.message).toContain("champs obligatoires");
@@ -1560,7 +1560,7 @@ describe("HealthCenter API", () => {
             password: otherRegionalHashedPassword,
             firstName: "Other",
             lastName: "Regional5",
-            phone: "606060606",
+            
             role: "REGIONAL",
             isActive: true,
             emailVerified: true,
@@ -1590,7 +1590,7 @@ describe("HealthCenter API", () => {
             password: otherDistrictHashedPassword,
             firstName: "Other",
             lastName: "District5",
-            phone: "707070707",
+            
             role: "DISTRICT",
             isActive: true,
             emailVerified: true,
@@ -1619,7 +1619,7 @@ describe("HealthCenter API", () => {
             firstName: "Agent",
             lastName: "Staff",
             email: `agent-${Date.now()}@example.com`,
-            phone: "123456789",
+            
             healthCenterId: otherHealthCenterId,
           });
         expect(res.statusCode).toBe(403);
@@ -1639,7 +1639,7 @@ describe("HealthCenter API", () => {
             firstName: "Agent",
             lastName: "Staff",
             email: uniqueEmail,
-            phone: "123456789",
+            
             healthCenterId: healthCenterId,
           });
 
@@ -1707,7 +1707,7 @@ describe("HealthCenter API", () => {
             password: hashedPassword,
             firstName: "Regional",
             lastName: "User2",
-            phone: "808080808",
+            
             role: "REGIONAL",
             isActive: true,
             emailVerified: true,
@@ -1742,7 +1742,7 @@ describe("HealthCenter API", () => {
             password: otherAgentAdminHashedPassword,
             firstName: "Other",
             lastName: "AgentAdmin",
-            phone: "909090909",
+            
             role: "AGENT",
             agentLevel: "ADMIN",
             isActive: true,
@@ -1762,7 +1762,7 @@ describe("HealthCenter API", () => {
             password: otherAgentStaffHashedPassword,
             firstName: "Other",
             lastName: "AgentStaff",
-            phone: "101010101",
+            
             role: "AGENT",
             agentLevel: "STAFF",
             isActive: true,
@@ -1794,7 +1794,7 @@ describe("HealthCenter API", () => {
             firstName: "Agent",
             lastName: "Staff2",
             email: uniqueEmail,
-            phone: "123456789",
+            
             healthCenterId: healthCenterId,
           });
         expect(createRes.statusCode).toBe(201);
@@ -1858,7 +1858,7 @@ describe("HealthCenter API", () => {
             firstName: "Agent",
             lastName: "Staff3",
             email: uniqueEmail,
-            phone: "123456789",
+            
             healthCenterId: healthCenterId,
           });
         expect(createRes.statusCode).toBe(201);

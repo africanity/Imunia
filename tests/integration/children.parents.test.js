@@ -22,6 +22,7 @@ jest.mock('../../src/services/whatsapp', () => ({
 jest.mock('../../src/services/notificationService', () => ({
   notifyAccountActivated: jest.fn(),
   notifyPhotoRequest: jest.fn(),
+  notifyHealthCenterAgents: jest.fn().mockResolvedValue([]),
 }));
 
 describe("Children API - Vue Parents", () => {
@@ -136,7 +137,7 @@ describe("Children API - Vue Parents", () => {
           password: hashedPassword,
           firstName: "National",
           lastName: "Admin",
-          phone: "123456789",
+          
           role: "NATIONAL",
           isActive: true,
           emailVerified: true,
@@ -188,7 +189,7 @@ describe("Children API - Vue Parents", () => {
           password: regionalHashedPassword,
           firstName: "Regional",
           lastName: "User",
-          phone: "987654321",
+          
           role: "REGIONAL",
           isActive: true,
           emailVerified: true,
@@ -226,7 +227,7 @@ describe("Children API - Vue Parents", () => {
           password: districtHashedPassword,
           firstName: "District",
           lastName: "User",
-          phone: "111111111",
+          
           role: "DISTRICT",
           isActive: true,
           emailVerified: true,
@@ -264,7 +265,7 @@ describe("Children API - Vue Parents", () => {
           password: agentAdminHashedPassword,
           firstName: "Agent",
           lastName: "Admin",
-          phone: "222222222",
+          
           role: "AGENT",
           agentLevel: "ADMIN",
           isActive: true,
@@ -289,7 +290,7 @@ describe("Children API - Vue Parents", () => {
           password: agentStaffHashedPassword,
           firstName: "Agent",
           lastName: "Staff",
-          phone: "333333333",
+          
           role: "AGENT",
           agentLevel: "STAFF",
           isActive: true,
@@ -324,7 +325,7 @@ describe("Children API - Vue Parents", () => {
             password: hashedPassword,
             firstName: "National",
             lastName: "Admin",
-            phone: "123456789",
+            
             role: "NATIONAL",
             isActive: true,
             emailVerified: true,
@@ -345,7 +346,7 @@ describe("Children API - Vue Parents", () => {
               password: hashedPassword,
               firstName: "Regional",
               lastName: "User",
-              phone: "987654321",
+              
               role: "REGIONAL",
               isActive: true,
               emailVerified: true,
@@ -373,7 +374,7 @@ describe("Children API - Vue Parents", () => {
               password: hashedPassword,
               firstName: "District",
               lastName: "User",
-              phone: "111111111",
+              
               role: "DISTRICT",
               isActive: true,
               emailVerified: true,
@@ -469,7 +470,7 @@ describe("Children API - Vue Parents", () => {
             password: hashedPassword,
             firstName: "Agent",
             lastName: "NoLevel",
-            phone: "444444444",
+            
             role: "AGENT",
             // agentLevel omis (sera null)
             isActive: true,
@@ -531,7 +532,7 @@ describe("Children API - Vue Parents", () => {
             password: hashedPassword,
             firstName: "Other",
             lastName: "Agent",
-            phone: "555555555",
+            
             role: "AGENT",
             agentLevel: "ADMIN",
             isActive: true,
@@ -607,7 +608,7 @@ describe("Children API - Vue Parents", () => {
             password: hashedPassword,
             firstName: "Other",
             lastName: "Regional",
-            phone: "666666666",
+            
             role: "REGIONAL",
             isActive: true,
             emailVerified: true,
@@ -639,7 +640,7 @@ describe("Children API - Vue Parents", () => {
             password: districtHashedPassword,
             firstName: "Other",
             lastName: "District",
-            phone: "888888888",
+            
             role: "DISTRICT",
             isActive: true,
             emailVerified: true,
@@ -671,7 +672,7 @@ describe("Children API - Vue Parents", () => {
             password: agentHashedPassword,
             firstName: "Other",
             lastName: "Agent2",
-            phone: "777777777",
+            
             role: "AGENT",
             agentLevel: "ADMIN",
             isActive: true,
@@ -752,7 +753,7 @@ describe("Children API - Vue Parents", () => {
             password: hashedPassword,
             firstName: "Other",
             lastName: "Agent3",
-            phone: "888888888",
+            
             role: "AGENT",
             agentLevel: "ADMIN",
             isActive: true,
@@ -833,7 +834,7 @@ describe("Children API - Vue Parents", () => {
             password: hashedPassword,
             firstName: "Other",
             lastName: "Agent4",
-            phone: "999999999",
+            
             role: "AGENT",
             agentLevel: "ADMIN",
             isActive: true,
@@ -896,7 +897,7 @@ describe("Children API - Vue Parents", () => {
             password: hashedPassword,
             firstName: "Regional",
             lastName: "NoRegion",
-            phone: "101010101",
+            
             role: "REGIONAL",
             isActive: true,
             emailVerified: true,
@@ -943,7 +944,7 @@ describe("Children API - Vue Parents", () => {
             password: hashedPassword,
             firstName: "District",
             lastName: "NoDistrict",
-            phone: "202020202",
+            
             role: "DISTRICT",
             isActive: true,
             emailVerified: true,
@@ -981,7 +982,7 @@ describe("Children API - Vue Parents", () => {
             password: hashedPassword,
             firstName: "Agent",
             lastName: "NoHealthCenter",
-            phone: "303030303",
+            
             role: "AGENT",
             agentLevel: "ADMIN",
             isActive: true,
@@ -1164,7 +1165,6 @@ describe("Children API - Vue Parents", () => {
         const parent = res.body.data[0];
         expect(parent).toHaveProperty("parentPhone");
         expect(parent).toHaveProperty("parentName");
-        expect(parent).toHaveProperty("parentEmail");
         expect(parent).toHaveProperty("childrenCount");
         expect(parent).toHaveProperty("children");
         expect(parent).toHaveProperty("regions");

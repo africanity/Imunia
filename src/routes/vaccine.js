@@ -55,5 +55,6 @@ router.delete(
 );
 router.put("/:id", requireAuth, vaccineController.updateVaccine);
 router.delete("/:id", requireAuth, vaccineController.deleteVaccine);
+router.get("/:id/impact", requireAuth, vaccineController.getVaccineDeleteImpact);
 
 module.exports = router;

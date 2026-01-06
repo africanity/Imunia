@@ -22,6 +22,7 @@ jest.mock('../../src/services/whatsapp', () => ({
 jest.mock('../../src/services/notificationService', () => ({
   notifyAccountActivated: jest.fn(),
   notifyPhotoRequest: jest.fn(),
+  notifyHealthCenterAgents: jest.fn().mockResolvedValue([]),
 }));
 
 describe("Children API - Activation et Demande Photos", () => {
@@ -130,7 +131,7 @@ describe("Children API - Activation et Demande Photos", () => {
           password: hashedPassword,
           firstName: "National",
           lastName: "Admin",
-          phone: "123456789",
+          
           role: "NATIONAL",
           isActive: true,
           emailVerified: true,
@@ -168,7 +169,7 @@ describe("Children API - Activation et Demande Photos", () => {
           password: regionalHashedPassword,
           firstName: "Regional",
           lastName: "User",
-          phone: "987654321",
+          
           role: "REGIONAL",
           isActive: true,
           emailVerified: true,
@@ -199,7 +200,7 @@ describe("Children API - Activation et Demande Photos", () => {
           password: districtHashedPassword,
           firstName: "District",
           lastName: "User",
-          phone: "111111111",
+          
           role: "DISTRICT",
           isActive: true,
           emailVerified: true,
@@ -230,7 +231,7 @@ describe("Children API - Activation et Demande Photos", () => {
           password: agentAdminHashedPassword,
           firstName: "Agent",
           lastName: "Admin",
-          phone: "222222222",
+          
           role: "AGENT",
           agentLevel: "ADMIN",
           isActive: true,
@@ -255,7 +256,7 @@ describe("Children API - Activation et Demande Photos", () => {
           password: agentStaffHashedPassword,
           firstName: "Agent",
           lastName: "Staff",
-          phone: "333333333",
+          
           role: "AGENT",
           agentLevel: "STAFF",
           isActive: true,
@@ -301,7 +302,7 @@ describe("Children API - Activation et Demande Photos", () => {
             password: hashedPassword,
             firstName: "National",
             lastName: "Admin",
-            phone: "123456789",
+            
             role: "NATIONAL",
             isActive: true,
             emailVerified: true,
@@ -322,7 +323,7 @@ describe("Children API - Activation et Demande Photos", () => {
               password: hashedPassword,
               firstName: "Regional",
               lastName: "User",
-              phone: "987654321",
+              
               role: "REGIONAL",
               isActive: true,
               emailVerified: true,
@@ -350,7 +351,7 @@ describe("Children API - Activation et Demande Photos", () => {
               password: hashedPassword,
               firstName: "District",
               lastName: "User",
-              phone: "111111111",
+              
               role: "DISTRICT",
               isActive: true,
               emailVerified: true,
@@ -485,7 +486,7 @@ describe("Children API - Activation et Demande Photos", () => {
             password: hashedPassword,
             firstName: "Other",
             lastName: "Agent",
-            phone: "444444444",
+            
             role: "AGENT",
             agentLevel: "ADMIN",
             isActive: true,
@@ -622,7 +623,7 @@ describe("Children API - Activation et Demande Photos", () => {
             password: hashedPassword,
             firstName: "Other",
             lastName: "Agent2",
-            phone: "555555555",
+            
             role: "AGENT",
             agentLevel: "ADMIN",
             isActive: true,

@@ -1,4 +1,5 @@
 const prisma = require("../config/prismaClient");
+const { logEventAsync } = require("../services/eventLogService");
 
 /**
  * GET /api/advice
@@ -44,9 +45,11 @@ const createAdvice = async (req, res, next) => {
     }
 
     // Validation: soit specificAge, soit (minAge et maxAge)
-    if (specificAge === null && (minAge === null || maxAge === null)) {
-      // Si aucun âge n'est spécifié, c'est OK (conseil pour tous les âges)
-    } else if (specificAge !== null && (minAge !== null || maxAge !== null)) {
+    const hasSpecificAge = specificAge !== null && specificAge !== undefined;
+    const hasMinAge = minAge !== null && minAge !== undefined;
+    const hasMaxAge = maxAge !== null && maxAge !== undefined;
+    
+    if (hasSpecificAge && (hasMinAge || hasMaxAge)) {
       return res.status(400).json({
         message: "Utilisez soit specificAge, soit minAge/maxAge, pas les deux",
       });
@@ -117,12 +120,16 @@ const updateAdvice = async (req, res, next) => {
       return res.status(404).json({ message: "Conseil introuvable" });
     }
 
-    // Validation: soit specificAge, soit (minAge et maxAge)
-    if (specificAge != null && (minAge != null || maxAge != null)) {
-      return res.status(400).json({
-        message: "Utilisez soit specificAge, soit minAge/maxAge, pas les deux",
-      });
-    }
+      // Validation: soit specificAge, soit (minAge et maxAge)
+      const hasSpecificAge = specificAge !== null && specificAge !== undefined;
+      const hasMinAge = minAge !== null && minAge !== undefined;
+      const hasMaxAge = maxAge !== null && maxAge !== undefined;
+      
+      if (hasSpecificAge && (hasMinAge || hasMaxAge)) {
+        return res.status(400).json({
+          message: "Utilisez soit specificAge, soit minAge/maxAge, pas les deux",
+        });
+      }
 
     const updated = await prisma.advice.update({
       where: { id },

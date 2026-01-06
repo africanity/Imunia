@@ -876,6 +876,9 @@ const restoreOrRecreateLotForRejectedTransfer = async (
 module.exports = {
   OWNER_TYPES,
   LOT_STATUS,
+  normalizeOwnerId,
+  determineStatusFromExpiration,
+  ensurePositiveInteger,
   createLot,
   consumeLots,
   recordTransfer,

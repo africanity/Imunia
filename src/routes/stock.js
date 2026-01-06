@@ -73,4 +73,9 @@ router.post("/pending-transfers/:transferId/reject", requireAuth, stockControlle
 router.post("/pending-transfers/:transferId/cancel", requireAuth, stockController.cancelPendingTransfer);
 router.get("/transfer-history", requireAuth, stockController.getTransferHistory);
 
+// Endpoints pour vérifier l'impact avant suppression/diminution
+router.get("/health-center/impact", requireAuth, stockController.getStockHealthCenterDeleteImpact);
+router.get("/lots/:id/impact", requireAuth, stockController.getLotDeleteImpact);
+router.get("/lots/:id/reduce-impact", requireAuth, stockController.getLotReduceImpact);
+
 module.exports = router;

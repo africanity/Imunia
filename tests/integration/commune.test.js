@@ -66,7 +66,7 @@ describe("Commune API", () => {
           password: hashedPassword,
           firstName: "National",
           lastName: "Admin",
-          phone: "123456789",
+          
           role: "NATIONAL",
           isActive: true,
           emailVerified: true,
@@ -96,7 +96,7 @@ describe("Commune API", () => {
           password: regionalHashedPassword,
           firstName: "Regional",
           lastName: "User",
-          phone: "987654321",
+          
           role: "REGIONAL",
           isActive: true,
           emailVerified: true,
@@ -139,7 +139,7 @@ describe("Commune API", () => {
             password: hashedPassword,
             firstName: "National",
             lastName: "Admin",
-            phone: "123456789",
+            
             role: "NATIONAL",
             isActive: true,
             emailVerified: true,
@@ -161,7 +161,7 @@ describe("Commune API", () => {
             password: hashedPassword,
             firstName: "Regional",
             lastName: "User",
-            phone: "987654321",
+            
             role: "REGIONAL",
             isActive: true,
             emailVerified: true,
@@ -252,7 +252,7 @@ describe("Commune API", () => {
             password: hashedPassword,
             firstName: "District",
             lastName: "User",
-            phone: "111111111",
+            
             role: "DISTRICT",
             isActive: true,
             emailVerified: true,
@@ -410,7 +410,7 @@ describe("Commune API", () => {
             password: hashedPassword,
             firstName: "District",
             lastName: "User2",
-            phone: "222222222",
+            
             role: "DISTRICT",
             isActive: true,
             emailVerified: true,
@@ -518,7 +518,7 @@ describe("Commune API", () => {
             password: hashedPassword,
             firstName: "Regional",
             lastName: "NoRegion",
-            phone: "333333333",
+            
             role: "REGIONAL",
             isActive: true,
             emailVerified: true,
@@ -594,7 +594,7 @@ describe("Commune API", () => {
             password: hashedPassword,
             firstName: "District",
             lastName: "User3",
-            phone: "444444444",
+            
             role: "DISTRICT",
             isActive: true,
             emailVerified: true,
@@ -817,7 +817,7 @@ describe("Commune API", () => {
             password: hashedPassword,
             firstName: "District",
             lastName: "User4",
-            phone: "555555555",
+            
             role: "DISTRICT",
             isActive: true,
             emailVerified: true,
@@ -948,7 +948,7 @@ describe("Commune API", () => {
             password: hashedPassword,
             firstName: "District",
             lastName: "User5",
-            phone: "666666666",
+            
             role: "DISTRICT",
             isActive: true,
             emailVerified: true,
@@ -1083,7 +1083,7 @@ describe("Commune API", () => {
             password: hashedPassword,
             firstName: "District",
             lastName: "User6",
-            phone: "777777777",
+            
             role: "DISTRICT",
             isActive: true,
             emailVerified: true,
