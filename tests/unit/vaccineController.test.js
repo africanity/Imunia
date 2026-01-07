@@ -383,10 +383,13 @@ describe('vaccineController', () => {
             delete: jest.fn().mockResolvedValue({}),
           },
           childVaccineScheduled: {
-            findMany: prisma.childVaccineScheduled.findMany,
+            findMany: jest.fn().mockResolvedValue([]),
+            delete: jest.fn().mockResolvedValue({}),
             deleteMany: jest.fn().mockResolvedValue({}),
+            updateMany: jest.fn().mockResolvedValue({}),
           },
           childVaccineCompleted: {
+            findMany: jest.fn().mockResolvedValue([]),
             deleteMany: jest.fn().mockResolvedValue({}),
           },
           childVaccineDue: {
@@ -399,10 +402,13 @@ describe('vaccineController', () => {
             deleteMany: jest.fn().mockResolvedValue({}),
           },
           stockReservation: {
+            findUnique: jest.fn().mockResolvedValue(null),
+            delete: jest.fn().mockResolvedValue({}),
             deleteMany: jest.fn().mockResolvedValue({}),
           },
           stockLot: {
-            findMany: prisma.stockLot.findMany,
+            findMany: jest.fn().mockResolvedValue([]),
+            update: jest.fn().mockResolvedValue({}),
           },
           stockNATIONAL: {
             deleteMany: jest.fn().mockResolvedValue({}),
@@ -426,6 +432,13 @@ describe('vaccineController', () => {
             findMany: jest.fn().mockResolvedValue([]),
           },
           stockTransferLot: {
+            deleteMany: jest.fn().mockResolvedValue({}),
+          },
+          pendingStockTransfer: {
+            findMany: jest.fn().mockResolvedValue([]),
+            deleteMany: jest.fn().mockResolvedValue({}),
+          },
+          pendingStockTransferLot: {
             deleteMany: jest.fn().mockResolvedValue({}),
           },
           children: {

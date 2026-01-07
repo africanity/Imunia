@@ -5,6 +5,7 @@ import { Plus, Syringe, Trash2, Pencil } from "lucide-react";
 import DashboardShell from "@/app/dashboard/components/DashboardShell";
 import StatCard from "@/app/dashboard/components/StatCard";
 import { useAuth } from "@/context/AuthContext";
+import { AppointmentCancellationModal } from "@/app/dashboard/components/AppointmentCancellationModal";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5050";
 
@@ -48,6 +49,13 @@ export default function VaccinsPage() {
   const [stockModalId, setStockModalId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [cancellationModalOpen, setCancellationModalOpen] = useState(false);
+  const [cancellationModalData, setCancellationModalData] = useState<{
+    actionType: "deleteVaccine";
+    affectedAppointments: number;
+    entityName: string;
+    onConfirm: () => void;
+  } | null>(null);
 
   const loadVaccines = async () => {
     if (!accessToken) {
@@ -169,7 +177,7 @@ export default function VaccinsPage() {
     }
   };
 
-  const handleDelete = async () => {
+  const performDelete = async () => {
     if (!canManage || !accessToken || !deletingId) return;
 
     try {
@@ -199,6 +207,13 @@ export default function VaccinsPage() {
     } finally {
       setDeleting(false);
     }
+  };
+
+  const handleDelete = async () => {
+    if (!canManage || !accessToken || !deletingId) return;
+
+    // Confirmation simple, l'impact a déjà été vérifié au clic
+    await performDelete();
   };
 
   const getStockSummary = (vaccine: Vaccine): StockSummary => ({
@@ -295,7 +310,47 @@ export default function VaccinsPage() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => setDeletingId(vaccine.id)}
+                        onClick={async () => {
+                          // Vérifier l'impact avant d'afficher la popup
+                          if (!accessToken) return;
+                          
+                          try {
+                            const impactResponse = await fetch(
+                              `${API_URL}/api/vaccine/${vaccine.id}/impact`,
+                              {
+                                headers: {
+                                  "Content-Type": "application/json",
+                                  Authorization: `Bearer ${accessToken}`,
+                                },
+                              }
+                            );
+
+                            if (impactResponse.ok) {
+                              const impactData = await impactResponse.json();
+                              if (impactData.willCancelAppointments && impactData.affectedAppointments > 0) {
+                                // Afficher directement la modal de warning
+                                setCancellationModalData({
+                                  actionType: "deleteVaccine",
+                                  affectedAppointments: impactData.affectedAppointments,
+                                  entityName: impactData.vaccineName || vaccine.name,
+                                  onConfirm: async () => {
+                                    setCancellationModalOpen(false);
+                                    setDeletingId(vaccine.id);
+                                    await performDelete();
+                                  },
+                                });
+                                setCancellationModalOpen(true);
+                                return;
+                              }
+                            }
+                          } catch (err) {
+                            console.error("Erreur vérification impact:", err);
+                            // En cas d'erreur, continuer avec la popup classique
+                          }
+
+                          // Si pas d'impact ou erreur, afficher la popup classique
+                          setDeletingId(vaccine.id);
+                        }}
                         className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-600 transition hover:bg-red-100"
                       >
                         <Trash2 className="h-4 w-4" />
@@ -463,7 +518,7 @@ export default function VaccinsPage() {
         </div>
       )}
 
-      {canManage && deletingId && (
+      {canManage && deletingId && !cancellationModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
           <div className="w-full max-w-[95vw] md:max-w-md rounded-3xl bg-white shadow-2xl">
             <div className="space-y-4 p-6">
@@ -493,6 +548,23 @@ export default function VaccinsPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal d'annulation de rendez-vous */}
+      {cancellationModalData && (
+        <AppointmentCancellationModal
+          isOpen={cancellationModalOpen}
+          onClose={() => {
+            setCancellationModalOpen(false);
+            setCancellationModalData(null);
+            setDeletingId(null);
+          }}
+          onConfirm={cancellationModalData.onConfirm}
+          affectedAppointments={cancellationModalData.affectedAppointments}
+          actionType={cancellationModalData.actionType}
+          entityName={cancellationModalData.entityName}
+          isLoading={deleting}
+        />
       )}
     </DashboardShell>
   );

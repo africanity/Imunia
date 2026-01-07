@@ -391,30 +391,41 @@ model StockTransferLot {
 }
 
 model PendingStockTransfer {
-  id            String                    @id @default(uuid())
-  vaccineId     String
-  fromType      StockLotOwnerType
-  fromId        String?
-  toType        StockLotOwnerType
-  toId          String?
-  quantity      Int
-  status        PendingTransferStatus     @default(PENDING)
-  createdAt     DateTime                  @default(now())
-  confirmedAt   DateTime?
-  confirmedById String?
-  confirmedBy   User?                     @relation(fields: [confirmedById], references: [id])
-  vaccine       Vaccine                   @relation(fields: [vaccineId], references: [id])
-  lots          PendingStockTransferLot[]
-  pendingLots   StockLot[]
+  id                        String                    @id @default(uuid())
+  vaccineId                 String
+  fromType                  StockLotOwnerType
+  fromId                    String?
+  toType                    StockLotOwnerType
+  toId                      String?
+  quantity                  Int
+  status                    PendingTransferStatus     @default(PENDING)
+  createdAt                 DateTime                  @default(now())
+  confirmedAt               DateTime?
+  confirmedById             String?
+  confirmedBy               User?                     @relation(fields: [confirmedById], references: [id])
+  vaccine                   Vaccine                   @relation(fields: [vaccineId], references: [id])
+  lots                      PendingStockTransferLot[]
+  pendingLots               StockLot[]
+  // Informations brutes du stock expéditeur (snapshot au moment de la création)
+  fromStockQuantity         Int?
+  fromStockNearestExpiration DateTime?
 }
 
 model PendingStockTransferLot {
   id                String               @id @default(uuid())
   pendingTransferId String
-  lotId             String
+  lotId             String?              // Nullable car le lot peut être supprimé
   quantity          Int
-  lot               StockLot             @relation(fields: [lotId], references: [id])
+  lot               StockLot?            @relation(fields: [lotId], references: [id], onDelete: SetNull)
   pendingTransfer   PendingStockTransfer @relation(fields: [pendingTransferId], references: [id], onDelete: Cascade)
+  // Informations brutes du lot (snapshot au moment de la création)
+  lotQuantity            Int?
+  lotRemainingQuantity    Int?
+  lotExpiration          DateTime?
+  lotStatus              StockLotStatus?
+  lotOwnerType           StockLotOwnerType?
+  lotOwnerId             String?
+  lotVaccineId           String?
 }
 
 model StockReservation {

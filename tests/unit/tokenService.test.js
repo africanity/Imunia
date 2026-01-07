@@ -49,13 +49,18 @@ describe("tokenService", () => {
       expect(token1).not.toBe(token2);
     });
 
-    it("Génère des tokens différents à chaque appel même avec le même payload", () => {
+    it("Génère des tokens différents à chaque appel même avec le même payload", async () => {
       const payload = { sub: "user123", role: "AGENT" };
       const token1 = signAccessToken(payload);
+      // Attendre au moins 1 seconde pour garantir un timestamp différent (JWT utilise des timestamps en secondes)
+      await new Promise(resolve => setTimeout(resolve, 1100));
       const token2 = signAccessToken(payload);
 
       // Les tokens doivent être différents car ils contiennent un timestamp
       expect(token1).not.toBe(token2);
+      // Vérifier que les deux tokens sont valides
+      expect(verifyAccessToken(token1)).toBeDefined();
+      expect(verifyAccessToken(token2)).toBeDefined();
     });
   });
 
@@ -300,12 +305,17 @@ describe("tokenService", () => {
       expect(token1).not.toBe(token2);
     });
 
-    it("Génère des tokens différents à chaque appel", () => {
+    it("Génère des tokens différents à chaque appel", async () => {
       const userId = "user123";
       const token1 = generatePasswordResetToken(userId);
+      // Attendre au moins 1 seconde pour garantir un timestamp différent (JWT utilise des timestamps en secondes)
+      await new Promise(resolve => setTimeout(resolve, 1100));
       const token2 = generatePasswordResetToken(userId);
 
       expect(token1).not.toBe(token2);
+      // Vérifier que les deux tokens sont valides
+      expect(verifyPasswordResetToken(token1)).toBeDefined();
+      expect(verifyPasswordResetToken(token2)).toBeDefined();
     });
   });
 

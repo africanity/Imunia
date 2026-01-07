@@ -935,11 +935,12 @@ const sendSuperAdminStockAdjustmentNotification = async ({
     </div>
   `;
 
+  const appName = await getAppName();
   const results = [];
   for (const email of emails) {
     try {
       const info = await transporter.sendMail({
-        from: `"${await getAppName()}" <${process.env.SMTP_USER}>`,
+        from: `"${appName}" <${process.env.SMTP_USER}>`,
         to: email,
         subject: `Ajustement de stock - Notification ${appName}`,
         html,
@@ -999,11 +1000,12 @@ const sendSuperAdminSettingsNotification = async ({
     </div>
   `;
 
+  const appName = await getAppName();
   const results = [];
   for (const email of emails) {
     try {
       const info = await transporter.sendMail({
-        from: `"${await getAppName()}" <${process.env.SMTP_USER}>`,
+        from: `"${appName}" <${process.env.SMTP_USER}>`,
         to: email,
         subject: `Modification des paramètres système - Notification ${appName}`,
         html,

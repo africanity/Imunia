@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.vaxcare" "\0"
-            VALUE "FileDescription", "vaxcare_mobile" "\0"
+            VALUE "CompanyName", "com.Imunia" "\0"
+            VALUE "FileDescription", "Imunia_mobile" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "vaxcare_mobile" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2025 com.vaxcare. All rights reserved." "\0"
-            VALUE "OriginalFilename", "vaxcare_mobile.exe" "\0"
-            VALUE "ProductName", "vaxcare_mobile" "\0"
+            VALUE "InternalName", "Imunia_mobile" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2025 com.Imunia. All rights reserved." "\0"
+            VALUE "OriginalFilename", "Imunia_mobile.exe" "\0"
+            VALUE "ProductName", "Imunia_mobile" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

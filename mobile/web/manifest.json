@@ -1,6 +1,6 @@
 {
-    "name": "vaxcare_mobile",
-    "short_name": "vaxcare_mobile",
+    "name": "Imunia_mobile",
+    "short_name": "Imunia_mobile",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

@@ -216,6 +216,19 @@ describe('districtController', () => {
       expect(res.json).toHaveBeenCalledWith({ message: 'Nom et commune requis' });
     });
 
+    it('devrait retourner 400 si regionId manquant pour REGIONAL', async () => {
+      req.user.regionId = null;
+      req.body.name = 'District Test';
+      req.body.communeId = 'commune-1';
+
+      await createDistrict(req, res, next);
+
+      expect(next).toHaveBeenCalled();
+      const error = next.mock.calls[0][0];
+      expect(error.status).toBe(400);
+      expect(error.message).toBe('Region non définie pour cet utilisateur');
+    });
+
     it('devrait permettre de créer plusieurs districts pour la même commune', async () => {
       req.body.name = 'District Test';
       req.body.communeId = 'commune-1';
@@ -318,6 +331,47 @@ describe('districtController', () => {
       expect(res.json).toHaveBeenCalledWith(mockUpdated);
     });
 
+    it('devrait retourner le district sans modification si data est vide', async () => {
+      req.params.id = 'district-1';
+      req.body = {}; // Pas de name ni communeId
+      const mockDistrict = {
+        id: 'district-1',
+        name: 'District Test',
+        communeId: 'commune-1',
+        commune: { regionId: 'region-1' },
+      };
+      prisma.district.findUnique.mockResolvedValue(mockDistrict);
+      prisma.commune.findUnique.mockResolvedValue({ regionId: 'region-1' });
+
+      await updateDistrict(req, res, next);
+
+      expect(prisma.district.update).not.toHaveBeenCalled();
+      expect(res.json).toHaveBeenCalledWith(mockDistrict);
+    });
+
+    it('devrait mettre à jour communeId si différent', async () => {
+      req.params.id = 'district-1';
+      req.body.communeId = 'commune-2';
+      const mockDistrict = {
+        id: 'district-1',
+        name: 'District Test',
+        communeId: 'commune-1',
+        commune: { regionId: 'region-1' },
+      };
+      const mockUpdated = { id: 'district-1', communeId: 'commune-2' };
+      prisma.district.findUnique.mockResolvedValue(mockDistrict);
+      prisma.commune.findUnique.mockResolvedValue({ regionId: 'region-1' });
+      prisma.district.update.mockResolvedValue(mockUpdated);
+
+      await updateDistrict(req, res, next);
+
+      expect(prisma.commune.findUnique).toHaveBeenCalledWith({
+        where: { id: 'commune-2' },
+        select: { regionId: true },
+      });
+      expect(prisma.district.update).toHaveBeenCalled();
+    });
+
     it('devrait appeler next en cas d\'erreur', async () => {
       req.params.id = 'district-1';
       const error = new Error('Erreur base de données');
@@ -411,6 +465,68 @@ describe('districtController', () => {
       expect(prisma.$transaction).toHaveBeenCalled();
       expect(res.status).toHaveBeenCalledWith(204);
       expect(res.send).toHaveBeenCalled();
+    });
+
+    it('devrait supprimer un district avec SUPERADMIN', async () => {
+      req.user.role = 'SUPERADMIN';
+      req.params.id = 'district-1';
+
+      const mockDistrict = { id: 'district-1' };
+      prisma.district.findUnique.mockResolvedValue(mockDistrict);
+      prisma.healthCenter.findMany.mockResolvedValue([]);
+      prisma.children.findMany.mockResolvedValue([]);
+      prisma.user.findMany.mockResolvedValue([]);
+      prisma.stockLot.findMany.mockResolvedValue([]);
+      prisma.pendingStockTransfer.findMany.mockResolvedValue([]);
+
+      prisma.stockDISTRICT.deleteMany.mockResolvedValue({ count: 0 });
+      prisma.user.deleteMany.mockResolvedValue({ count: 0 });
+      prisma.district.delete.mockResolvedValue(mockDistrict);
+
+      await deleteDistrict(req, res, next);
+
+      expect(prisma.district.findUnique).toHaveBeenCalledWith({
+        where: { id: 'district-1' },
+        select: { id: true },
+      });
+      expect(prisma.$transaction).toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(204);
+    });
+
+    it('devrait retourner 404 si district non trouvé pour SUPERADMIN', async () => {
+      req.user.role = 'SUPERADMIN';
+      req.params.id = 'district-1';
+      prisma.district.findUnique.mockResolvedValue(null);
+
+      await deleteDistrict(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalledWith({ message: 'District introuvable' });
+    });
+
+    it('devrait supprimer un district sans enfants ni health centers', async () => {
+      req.params.id = 'district-1';
+
+      const mockDistrict = {
+        id: 'district-1',
+        commune: { regionId: 'region-1' },
+      };
+      prisma.district.findUnique.mockResolvedValue(mockDistrict);
+      prisma.commune.findUnique.mockResolvedValue({ regionId: 'region-1' });
+      prisma.healthCenter.findMany.mockResolvedValue([]);
+      prisma.children.findMany.mockResolvedValue([]);
+      prisma.user.findMany.mockResolvedValue([]);
+      prisma.stockLot.findMany.mockResolvedValue([]);
+      prisma.pendingStockTransfer.findMany.mockResolvedValue([]);
+
+      prisma.stockDISTRICT.deleteMany.mockResolvedValue({ count: 0 });
+      prisma.user.deleteMany.mockResolvedValue({ count: 0 });
+      prisma.district.delete.mockResolvedValue(mockDistrict);
+
+      await deleteDistrict(req, res, next);
+
+      expect(prisma.$transaction).toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(204);
     });
 
     it('devrait appeler next en cas d\'erreur', async () => {
@@ -530,6 +646,75 @@ describe('districtController', () => {
           pendingTransfers: mockPendingTransfers,
         },
       });
+    });
+
+    it('devrait retourner 404 si district non trouvé pour SUPERADMIN', async () => {
+      req.user.role = 'SUPERADMIN';
+      req.params.id = 'district-1';
+      prisma.district.findUnique.mockResolvedValue(null);
+
+      await getDistrictDeletionSummary(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalledWith({ message: 'District introuvable' });
+    });
+
+    it('devrait retourner un résumé pour SUPERADMIN', async () => {
+      req.user.role = 'SUPERADMIN';
+      req.params.id = 'district-1';
+
+      const mockDistrict = {
+        id: 'district-1',
+        name: 'District 1',
+        commune: { id: 'commune-1', name: 'Commune 1', regionId: 'region-1' },
+      };
+      const mockCascadeData = {
+        district: mockDistrict,
+        healthCenters: [],
+        children: [],
+        users: [],
+        stockLots: [],
+        pendingTransfers: [],
+        childVaccinationCounts: {
+          scheduled: 0,
+          due: 0,
+          late: 0,
+          overdue: 0,
+          completed: 0,
+        },
+        stockReservationsCount: 0,
+        recordCount: 0,
+        childIds: [],
+        healthCenterIds: [],
+        lotIds: [],
+        pendingTransferIds: [],
+      };
+
+      prisma.district.findUnique.mockResolvedValue({ id: 'district-1' });
+      prisma.$transaction.mockResolvedValue(mockCascadeData);
+
+      await getDistrictDeletionSummary(req, res, next);
+
+      expect(prisma.$transaction).toHaveBeenCalled();
+      expect(res.json).toHaveBeenCalled();
+    });
+
+    it('devrait gérer les erreurs avec status', async () => {
+      req.params.id = 'district-1';
+      const error = new Error('District introuvable');
+      error.status = 404;
+      const mockDistrict = {
+        id: 'district-1',
+        commune: { regionId: 'region-1' },
+      };
+      prisma.district.findUnique.mockResolvedValue(mockDistrict);
+      prisma.commune.findUnique.mockResolvedValue({ regionId: 'region-1' });
+      prisma.$transaction.mockRejectedValue(error);
+
+      await getDistrictDeletionSummary(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalledWith({ message: 'District introuvable' });
     });
 
     it('devrait appeler next en cas d\'erreur non gérée', async () => {

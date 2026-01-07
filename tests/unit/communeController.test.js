@@ -84,6 +84,9 @@ jest.mock('../../src/config/prismaClient', () => {
     stockDISTRICT: {
       deleteMany: jest.fn(),
     },
+    region: {
+      findUnique: jest.fn(),
+    },
     vaccineRequest: {
       count: jest.fn(),
       deleteMany: jest.fn(),
@@ -134,6 +137,7 @@ describe('communeController', () => {
     req = {
       body: {},
       params: {},
+      query: {},
       user: {
         role: 'NATIONAL',
       },
@@ -195,6 +199,27 @@ describe('communeController', () => {
       await listCommunes(req, res, next);
 
       expect(prisma.commune.findMany).toHaveBeenCalled();
+      expect(res.json).toHaveBeenCalledWith({ total: 1, items: mockCommunes });
+    });
+
+    it('devrait filtrer par regionId pour SUPERADMIN avec overrideRegionId', async () => {
+      req.user.role = 'SUPERADMIN';
+      req.query.regionId = 'region-1';
+      const mockCommunes = [
+        { id: 'commune-1', name: 'Commune 1', region: { id: 'region-1', name: 'Dakar' } },
+      ];
+      prisma.commune.findMany.mockResolvedValue(mockCommunes);
+
+      await listCommunes(req, res, next);
+
+      expect(prisma.commune.findMany).toHaveBeenCalledWith({
+        where: { regionId: 'region-1' },
+        include: {
+          region: { select: { id: true, name: true } },
+          districts: { select: { id: true, name: true } },
+        },
+        orderBy: { name: 'asc' },
+      });
       expect(res.json).toHaveBeenCalledWith({ total: 1, items: mockCommunes });
     });
 
@@ -271,6 +296,45 @@ describe('communeController', () => {
       expect(res.status).toHaveBeenCalledWith(201);
     });
 
+    it('devrait créer une commune avec succès pour SUPERADMIN', async () => {
+      req.user.role = 'SUPERADMIN';
+      req.body.name = 'Commune Test';
+      req.body.regionId = 'region-1';
+      prisma.region.findUnique.mockResolvedValue({ id: 'region-1' });
+      const mockCommune = {
+        id: 'commune-1',
+        name: 'Commune Test',
+        regionId: 'region-1',
+        region: { id: 'region-1', name: 'Dakar' },
+      };
+      prisma.commune.create.mockResolvedValue(mockCommune);
+
+      await createCommune(req, res, next);
+
+      expect(prisma.region.findUnique).toHaveBeenCalledWith({
+        where: { id: 'region-1' },
+        select: { id: true },
+      });
+      expect(prisma.commune.create).toHaveBeenCalledWith({
+        data: { name: 'Commune Test', regionId: 'region-1' },
+        include: { region: { select: { id: true, name: true } } },
+      });
+      expect(res.status).toHaveBeenCalledWith(201);
+      expect(res.json).toHaveBeenCalledWith(mockCommune);
+    });
+
+    it('devrait retourner 400 si région introuvable pour SUPERADMIN', async () => {
+      req.user.role = 'SUPERADMIN';
+      req.body.name = 'Commune Test';
+      req.body.regionId = 'region-inexistante';
+      prisma.region.findUnique.mockResolvedValue(null);
+
+      await createCommune(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({ message: 'Région introuvable' });
+    });
+
     it('devrait appeler next en cas d\'erreur', async () => {
       req.body.name = 'Commune Test';
       req.body.regionId = 'region-1';
@@ -323,6 +387,73 @@ describe('communeController', () => {
 
       expect(prisma.commune.update).toHaveBeenCalled();
       expect(res.json).toHaveBeenCalledWith(mockUpdated);
+    });
+
+    it('devrait retourner la commune sans modification si data est vide', async () => {
+      req.params.id = 'commune-1';
+      req.body = {}; // Pas de name ni regionId
+      const mockCommune = { id: 'commune-1', name: 'Commune Test', region: { id: 'region-1' } };
+      prisma.commune.findUnique.mockResolvedValue(mockCommune);
+
+      await updateCommune(req, res, next);
+
+      expect(prisma.commune.update).not.toHaveBeenCalled();
+      expect(res.json).toHaveBeenCalledWith(mockCommune);
+    });
+
+    it('devrait mettre à jour seulement le nom si regionId n\'est pas fourni par REGIONAL', async () => {
+      req.user.role = 'REGIONAL';
+      req.user.regionId = 'region-1';
+      req.params.id = 'commune-1';
+      req.body.name = 'Commune Modifiée';
+      const mockCommune = { id: 'commune-1', name: 'Commune Test', region: { id: 'region-1' } };
+      const mockUpdated = { id: 'commune-1', name: 'Commune Modifiée', region: { id: 'region-1', name: 'Dakar' } };
+      prisma.commune.findUnique.mockResolvedValue(mockCommune);
+      prisma.commune.update.mockResolvedValue(mockUpdated);
+
+      await updateCommune(req, res, next);
+
+      expect(prisma.commune.update).toHaveBeenCalledWith({
+        where: { id: 'commune-1' },
+        data: { name: 'Commune Modifiée' },
+        include: { region: { select: { id: true, name: true } } },
+      });
+    });
+
+    it('devrait mettre à jour une commune avec regionId pour NATIONAL', async () => {
+      req.user.role = 'NATIONAL';
+      req.params.id = 'commune-1';
+      req.body.name = 'Commune Modifiée';
+      req.body.regionId = 'region-2';
+      const mockCommune = { id: 'commune-1', name: 'Commune Test', region: { id: 'region-1' } };
+      const mockUpdated = { id: 'commune-1', name: 'Commune Modifiée', region: { id: 'region-2', name: 'Thiès' } };
+      prisma.commune.findUnique.mockResolvedValue(mockCommune);
+      prisma.commune.update.mockResolvedValue(mockUpdated);
+
+      await updateCommune(req, res, next);
+
+      expect(prisma.commune.update).toHaveBeenCalledWith({
+        where: { id: 'commune-1' },
+        data: { name: 'Commune Modifiée', regionId: 'region-2' },
+        include: { region: { select: { id: true, name: true } } },
+      });
+    });
+
+    it('devrait retourner 403 si SUPERADMIN essaie de modifier une commune', async () => {
+      // updateCommune ne permet pas à SUPERADMIN de modifier (contrairement à listCommunes et createCommune)
+      req.user.role = 'SUPERADMIN';
+      req.params.id = 'commune-1';
+      req.body.name = 'Commune Modifiée';
+      req.body.regionId = 'region-2';
+      const mockCommune = { id: 'commune-1', name: 'Commune Test', region: { id: 'region-1' } };
+      prisma.commune.findUnique.mockResolvedValue(mockCommune);
+
+      await updateCommune(req, res, next);
+
+      // SUPERADMIN n'est pas autorisé dans updateCommune (contrairement à listCommunes et createCommune)
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith({ message: 'Accès refusé' });
+      expect(prisma.commune.update).not.toHaveBeenCalled();
     });
 
     it('devrait appeler next en cas d\'erreur', async () => {
@@ -430,6 +561,31 @@ describe('communeController', () => {
       expect(prisma.$transaction).toHaveBeenCalled();
       expect(res.status).toHaveBeenCalledWith(204);
       expect(res.send).toHaveBeenCalled();
+    });
+
+    it('devrait supprimer une commune sans enfants ni health centers', async () => {
+      req.params.id = 'commune-1';
+
+      const mockDistricts = [{ id: 'district-1', name: 'District 1' }];
+      const mockUsers = [{ id: 'user-1', firstName: 'User', lastName: '1', role: 'AGENT' }];
+
+      prisma.commune.findUnique.mockResolvedValue({ regionId: 'region-1' });
+      prisma.district.findMany.mockResolvedValue(mockDistricts);
+      prisma.healthCenter.findMany.mockResolvedValue([]);
+      prisma.children.findMany.mockResolvedValue([]);
+      prisma.user.findMany.mockResolvedValue(mockUsers);
+      prisma.stockLot.findMany.mockResolvedValue([]);
+      prisma.pendingStockTransfer.findMany.mockResolvedValue([]);
+
+      prisma.stockDISTRICT.deleteMany.mockResolvedValue({ count: 1 });
+      prisma.user.deleteMany.mockResolvedValue({ count: 1 });
+      prisma.district.deleteMany.mockResolvedValue({ count: 1 });
+      prisma.commune.delete.mockResolvedValue({ id: 'commune-1' });
+
+      await deleteCommune(req, res, next);
+
+      expect(prisma.$transaction).toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(204);
     });
 
     it('devrait appeler next en cas d\'erreur', async () => {
@@ -553,6 +709,52 @@ describe('communeController', () => {
           pendingTransfers: mockPendingTransfers,
         },
       });
+    });
+
+    it('devrait retourner 404 si commune non trouvée dans getCommuneDeletionSummary', async () => {
+      req.params.id = 'commune-1';
+      prisma.commune.findUnique.mockResolvedValue(null);
+
+      await getCommuneDeletionSummary(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalledWith({ message: 'Commune introuvable' });
+    });
+
+    it('devrait retourner 403 si REGIONAL essaie d\'accéder à une commune d\'une autre région', async () => {
+      req.user.role = 'REGIONAL';
+      req.user.regionId = 'region-1';
+      req.params.id = 'commune-1';
+      prisma.commune.findUnique.mockResolvedValue({ regionId: 'region-2' });
+
+      await getCommuneDeletionSummary(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith({ message: 'Accès refusé' });
+    });
+
+    it('devrait retourner 403 si utilisateur n\'est pas NATIONAL ou REGIONAL', async () => {
+      req.user.role = 'AGENT';
+      req.params.id = 'commune-1';
+      prisma.commune.findUnique.mockResolvedValue({ regionId: 'region-1' });
+
+      await getCommuneDeletionSummary(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith({ message: 'Accès refusé' });
+    });
+
+    it('devrait gérer les erreurs avec status', async () => {
+      req.params.id = 'commune-1';
+      const error = new Error('Commune introuvable');
+      error.status = 404;
+      prisma.commune.findUnique.mockResolvedValue({ regionId: 'region-1' });
+      prisma.$transaction.mockRejectedValue(error);
+
+      await getCommuneDeletionSummary(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalledWith({ message: 'Commune introuvable' });
     });
 
     it('devrait appeler next en cas d\'erreur non gérée', async () => {

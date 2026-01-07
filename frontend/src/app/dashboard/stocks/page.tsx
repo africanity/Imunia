@@ -25,191 +25,43 @@ import DashboardShell from "@/app/dashboard/components/DashboardShell";
 import StatCard from "@/app/dashboard/components/StatCard";
 import { AppointmentCancellationModal } from "@/app/dashboard/components/AppointmentCancellationModal";
 import { useAuth } from "@/context/AuthContext";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5050";
-
-const LOW_STOCK_THRESHOLD = 50;
-
-type StockStats = {
-  totalLots: number;
-  totalQuantity: number;
-  lowStockCount: number;
-  threshold: number;
-  expiredLots: number;
-};
-
-const emptyStats: StockStats = {
-  totalLots: 0,
-  totalQuantity: 0,
-  lowStockCount: 0,
-  threshold: LOW_STOCK_THRESHOLD,
-  expiredLots: 0,
-};
-
-type VaccineInfo = {
-  id: string;
-  name: string;
-  description: string;
-  dosesRequired: string;
-};
-
-type VaccineResponse =
-  | {
-      vaccines?: VaccineInfo[];
-    }
-  | VaccineInfo[];
-
-type NationalStock = {
-  id: string;
-  vaccineId: string;
-  quantity: number | null;
-  vaccine: VaccineInfo;
-  hasExpiredLot?: boolean;
-  nearestExpiration?: string | null;
-  lotCount?: number;
-  expiredLotCount?: number;
-  expiredQuantity?: number;
-};
-
-type NationalStockResponse = {
-  national?: NationalStock[];
-};
-
-type LotItem = {
-  id: string;
-  vaccineId: string;
-  quantity: number;
-  remainingQuantity: number;
-  distributedQuantity: number;
-  expiration: string;
-  status: "VALID" | "EXPIRED";
-  sourceLotId: string | null;
-  derivedCount: number;
-  reservedQuantity?: number;
-};
-
-type LotResponse = {
-  lots: LotItem[];
-  totalRemaining: number;
-};
-
-type LotModalContext = {
-  vaccineId: string;
-  vaccineName: string;
-  ownerLabel?: string | null;
-  ownerId?: string | null;
-};
-
-type PendingTransfer = {
-  id: string;
-  vaccineId: string;
-  vaccine: VaccineInfo;
-  fromType: string;
-  fromId: string | null;
-  toType: string;
-  toId: string | null;
-  toName?: string | null;
-  quantity: number;
-  status: "PENDING" | "CONFIRMED" | "CANCELLED";
-  createdAt: string;
-  confirmedAt: string | null;
-  confirmedById: string | null;
-  lots: Array<{
-    id: string;
-    lotId: string;
-    quantity: number;
-    lot: {
-      id: string;
-      expiration: string;
-      quantity: number;
-      remainingQuantity: number;
-      status?: string;
-    } | null;
-  }>;
-};
-
-type TransferHistoryItem = {
-  id: string;
-  vaccineId: string;
-  vaccineName: string;
-  fromType: string;
-  fromId: string | null;
-  fromName: string | null;
-  toType: string;
-  toId: string | null;
-  toName: string | null;
-  quantity: number;
-  sentAt: string;
-  confirmedAt: string | null;
-  confirmedById: string | null;
-  confirmedByName: string | null;
-  lotExpiration: string | null;
-  lotStatus: string | null;
-  status: string;
-  createdAt: string;
-};
-
-const formatExpirationDate = (value: string) => {
-  try {
-    return new Intl.DateTimeFormat("fr-FR", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    }).format(new Date(value));
-  } catch {
-    return value;
-  }
-};
-
-const formatEntityName = (type: string, name: string | null | undefined): string => {
-  if (!name) {
-    // Si pas de nom, on retourne juste le type
-    switch (type) {
-      case "NATIONAL":
-        return "National";
-      case "REGIONAL":
-        return "Région";
-      case "DISTRICT":
-        return "District";
-      case "HEALTHCENTER":
-        return "Centre de santé";
-      default:
-        return "Inconnu";
-    }
-  }
-  
-  // Si on a un nom, on retourne "Type: Nom"
-  switch (type) {
-    case "NATIONAL":
-      return `National: ${name}`;
-    case "REGIONAL":
-      return `Région: ${name}`;
-    case "DISTRICT":
-      return `District: ${name}`;
-    case "HEALTHCENTER":
-      return `Centre de santé: ${name}`;
-    default:
-      return name;
-  }
-};
-
-const isDateExpired = (value: string) => {
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  const target = new Date(value);
-  return target < now;
-};
-
-type Region = {
-  id: string;
-  name: string;
-};
-
-type RegionsResponse =
-  | {
-      regions?: Region[];
-    }
-  | Region[];
+import { StocksHeader } from "./components/StocksHeader";
+import { StatsCards } from "./components/StatsCards";
+import { LotLegend } from "./components/LotLegend";
+import { PendingTransfersAlert } from "./components/PendingTransfersAlert";
+import { NationalStocksTable } from "./components/NationalStocksTable";
+import { PendingTransfersTable } from "./components/PendingTransfersTable";
+import { HistoryTable } from "./components/HistoryTable";
+import { CreateStockModal } from "./components/CreateStockModal";
+import { UpdateStockModal } from "./components/UpdateStockModal";
+import { TransferModal } from "./components/TransferModal";
+import { LotModal } from "./components/LotModal";
+import {
+  type StockStats,
+  type VaccineInfo,
+  type VaccineResponse,
+  type NationalStock,
+  type NationalStockResponse,
+  type LotItem,
+  type LotResponse,
+  type LotModalContext,
+  type PendingTransfer,
+  type TransferHistoryItem,
+  type Region,
+  type RegionsResponse,
+  type RegionalStock,
+  type DistrictStock,
+  type DistrictOption,
+  type HealthCenterOption,
+  type HealthCenterStock,
+  emptyStats,
+} from "./types";
+import {
+  formatExpirationDate,
+  formatEntityName,
+  isDateExpired,
+  API_URL,
+} from "./utils";
 
 export function NationalStocksPage() {
   const { accessToken, user } = useAuth();
@@ -254,7 +106,7 @@ export function NationalStocksPage() {
   const [pendingRegionalCreation, setPendingRegionalCreation] = useState(false);
 
   const [lotModalOpen, setLotModalOpen] = useState(false);
-  const [lotContext, setLotContext] = useState<{ vaccineId: string; vaccineName: string } | null>(null);
+  const [lotContext, setLotContext] = useState<LotModalContext | null>(null);
   const [lotItems, setLotItems] = useState<LotItem[]>([]);
   const [lotTotalRemaining, setLotTotalRemaining] = useState(0);
   const [lotLoading, setLotLoading] = useState(false);
@@ -272,6 +124,8 @@ export function NationalStocksPage() {
   // États pour les envois en attente (reçus) - toujours vide pour NATIONAL
   const [pendingTransfers, setPendingTransfers] = useState<PendingTransfer[]>([]);
   const [pendingTransfersLoading, setPendingTransfersLoading] = useState(false);
+  const [confirmingTransferId, setConfirmingTransferId] = useState<string | null>(null);
+  const [rejectingTransferId, setRejectingTransferId] = useState<string | null>(null);
   
   // États pour les envois en cours (envoyés)
   const [sentTransfers, setSentTransfers] = useState<PendingTransfer[]>([]);
@@ -515,142 +369,6 @@ export function NationalStocksPage() {
     }
   };
 
-  const handleDeleteHealthCenterStock = async (stock: HealthCenterStock) => {
-    if (!accessToken) return;
-
-    const confirmed = window.confirm(
-      `Supprimer le stock pour le vaccin ${stock.vaccine.name} ?`,
-    );
-    if (!confirmed) {
-      return;
-    }
-
-    try {
-      setHealthDeletingId(stock.id);
-      setError(null);
-
-      const payload: Record<string, string> = { vaccineId: stock.vaccineId };
-      if (stock.healthCenterId) {
-        payload.healthCenterId = stock.healthCenterId;
-      }
-
-      const response = await fetch(`${API_URL}/api/stock/health-center`, {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        const data = await response.json().catch(() => null);
-        throw new Error(data?.message ?? `status ${response.status}`);
-      }
-
-      await Promise.all([fetchHealthCenterStocks(), fetchHealthCenterStats()]);
-    } catch (err) {
-      console.error("Erreur suppression stock centre:", err);
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Impossible de supprimer ce stock de centre.",
-      );
-    } finally {
-      setHealthDeletingId(null);
-    }
-  };
-
-  const handleDeleteDistrictStock = async (stock: DistrictStock) => {
-    if (!accessToken) return;
-
-    const confirmed = window.confirm(
-      `Supprimer le stock du district ${stock.district?.name ?? ""} pour le vaccin ${stock.vaccine.name} ?`,
-    );
-    if (!confirmed) {
-      return;
-    }
-
-    try {
-      setDistrictDeletingId(stock.id);
-      setError(null);
-
-      const payload: Record<string, string> = { vaccineId: stock.vaccineId };
-      if (stock.districtId) {
-        payload.districtId = stock.districtId;
-      }
-
-      const response = await fetch(`${API_URL}/api/stock/district`, {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        const data = await response.json().catch(() => null);
-        throw new Error(data?.message ?? `status ${response.status}`);
-      }
-
-      await Promise.all([fetchDistrictStocks(), fetchDistrictStats()]);
-    } catch (err) {
-      console.error("Erreur suppression stock district:", err);
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Impossible de supprimer ce stock district.",
-      );
-    } finally {
-      setDistrictDeletingId(null);
-    }
-  };
-
-  const handleDeleteRegionalStock = async (stock: RegionalStock) => {
-    if (!accessToken) return;
-    const confirmed = window.confirm(
-      `Supprimer le stock régional pour le vaccin ${stock.vaccine.name} ?`,
-    );
-    if (!confirmed) {
-      return;
-    }
-
-    try {
-      setRegionalDeletingId(stock.id);
-      setError(null);
-
-      const payload: Record<string, string> = { vaccineId: stock.vaccineId };
-      if (stock.regionId) {
-        payload.regionId = stock.regionId;
-      }
-
-      const response = await fetch(`${API_URL}/api/stock/regional`, {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        const result = await response.json().catch(() => null);
-        throw new Error(result?.message ?? `status ${response.status}`);
-      }
-
-      await Promise.all([fetchRegionalStocks(), fetchRegionalStats()]);
-    } catch (err) {
-      console.error("Erreur suppression stock régional:", err);
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Impossible de supprimer ce stock régional.",
-      );
-    } finally {
-      setRegionalDeletingId(null);
-    }
-  };
 
   const openUpdateModal = async (stock: NationalStock) => {
     setUpdateContext({
@@ -1109,6 +827,7 @@ export function NationalStocksPage() {
       setLotContext({
         vaccineId: stock.vaccineId,
         vaccineName: stock.vaccine.name,
+        ownerLabel: null,
         ownerId: null,
       });
       setLotItems([]);
@@ -1254,6 +973,125 @@ export function NationalStocksPage() {
     }
   }, [accessToken, historyPage, historyFilters]);
 
+  // Fonction pour récupérer les transferts reçus en attente
+  const fetchPendingTransfers = useCallback(async () => {
+    if (!accessToken) {
+      setPendingTransfers([]);
+      setPendingTransfersLoading(false);
+      return;
+    }
+    try {
+      setPendingTransfersLoading(true);
+      const response = await fetch(`${API_URL}/api/stock/pending-transfers/received`, {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.message ?? `status ${response.status}`);
+      }
+
+      const payload = (await response.json()) as { transfers?: PendingTransfer[] };
+      setPendingTransfers(Array.isArray(payload?.transfers) ? payload.transfers : []);
+    } catch (err) {
+      console.error("Erreur chargement envois reçus:", err);
+      setPendingTransfers([]);
+    } finally {
+      setPendingTransfersLoading(false);
+    }
+  }, [accessToken]);
+
+  // Fonction pour confirmer un transfert
+  const handleConfirmTransfer = useCallback(
+    async (transferId: string) => {
+      if (!accessToken) return;
+      try {
+        setConfirmingTransferId(transferId);
+        const response = await fetch(
+          `${API_URL}/api/stock/pending-transfers/${transferId}/confirm`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${accessToken}`,
+            },
+          },
+        );
+
+        if (!response.ok) {
+          const payload = await response.json().catch(() => null);
+          throw new Error(payload?.message ?? `status ${response.status}`);
+        }
+
+        // Recharger les données
+        await Promise.all([
+          fetchPendingTransfers(),
+          fetchNationalStocks(),
+          fetchNationalStats(),
+        ]);
+      } catch (err) {
+        console.error("Erreur confirmation envoi:", err);
+        alert(
+          err instanceof Error
+            ? err.message
+            : "Impossible de confirmer la réception du stock.",
+        );
+      } finally {
+        setConfirmingTransferId(null);
+      }
+    },
+    [accessToken, fetchPendingTransfers, fetchNationalStocks, fetchNationalStats],
+  );
+
+  // Fonction pour refuser un transfert
+  const handleRejectTransfer = useCallback(
+    async (transferId: string) => {
+      if (!accessToken) return;
+      const confirmed = window.confirm(
+        "Êtes-vous sûr de vouloir refuser ce transfert ? Les quantités seront restaurées chez l'expéditeur."
+      );
+      if (!confirmed) return;
+
+      try {
+        setRejectingTransferId(transferId);
+        const response = await fetch(
+          `${API_URL}/api/stock/pending-transfers/${transferId}/reject`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${accessToken}`,
+            },
+          },
+        );
+
+        if (!response.ok) {
+          const payload = await response.json().catch(() => null);
+          throw new Error(payload?.message ?? `status ${response.status}`);
+        }
+
+        await Promise.all([
+          fetchPendingTransfers(),
+          fetchNationalStocks(),
+          fetchNationalStats(),
+        ]);
+      } catch (err) {
+        console.error("Erreur refus envoi:", err);
+        alert(
+          err instanceof Error
+            ? err.message
+            : "Impossible de refuser le transfert.",
+        );
+      } finally {
+        setRejectingTransferId(null);
+      }
+    },
+    [accessToken, fetchPendingTransfers, fetchNationalStocks, fetchNationalStats],
+  );
+
   // Fonction pour annuler un transfert
   const handleCancelTransfer = useCallback(
     async (transferId: string) => {
@@ -1303,112 +1141,32 @@ export function NationalStocksPage() {
   useEffect(() => {
     fetchNationalStocks();
     fetchNationalStats();
-    if (activeTab === "pending-sent") {
+    if (activeTab === "pending-received") {
+      fetchPendingTransfers();
+    } else if (activeTab === "pending-sent") {
       fetchSentTransfers();
     } else if (activeTab === "history") {
       fetchTransferHistory();
     }
-  }, [fetchNationalStocks, fetchNationalStats, activeTab, fetchSentTransfers, fetchTransferHistory]);
+  }, [fetchNationalStocks, fetchNationalStats, activeTab, fetchPendingTransfers, fetchSentTransfers, fetchTransferHistory]);
 
   return (
     <DashboardShell active="/dashboard/stocks">
       <div className="space-y-8">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          {user?.role !== "SUPERADMIN" && (
-            <div>
-              <h2 className="text-2xl font-semibold text-slate-900">Stocks & lots</h2>
-              <p className="text-sm text-slate-500">
-                Suivi des stocks nationaux et distribution vers les régions.
-              </p>
-            </div>
-          )}
-          
-          {/* Boutons d'action et onglets */}
-          <div className="flex flex-col gap-3 md:flex-row md:items-center">
-            {/* Bouton Nouveau lot */}
-            {activeTab === "stocks" && (
-              <button
-                type="button"
-                onClick={() => setCreateModalOpen(true)}
-                className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-700"
-              >
-                <Plus className="h-4 w-4" />
-                Nouveau lot
-              </button>
-            )}
-            
-            {/* Onglets */}
-            <div className="border-b border-slate-200 md:border-b-0">
-              <nav className="-mb-px flex space-x-4">
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("stocks")}
-                  className={`whitespace-nowrap border-b-2 px-1 py-2 text-sm font-medium transition ${
-                    activeTab === "stocks"
-                      ? "border-emerald-500 text-emerald-600"
-                      : "border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700"
-                  }`}
-                >
-                  Stocks
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("pending-sent")}
-                  className={`whitespace-nowrap border-b-2 px-1 py-2 text-sm font-medium transition ${
-                    activeTab === "pending-sent"
-                      ? "border-emerald-500 text-emerald-600"
-                      : "border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700"
-                  }`}
-                >
-                  Envois en cours
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("history")}
-                  className={`whitespace-nowrap border-b-2 px-1 py-2 text-sm font-medium transition ${
-                    activeTab === "history"
-                      ? "border-emerald-500 text-emerald-600"
-                      : "border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700"
-                  }`}
-                >
-                  Historique
-                </button>
-              </nav>
-            </div>
-          </div>
-        </div>
+        <StocksHeader
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          onCreateClick={() => setCreateModalOpen(true)}
+          showCreateButton={true}
+          title="Stocks & lots"
+          description="Suivi des stocks nationaux et distribution vers les régions."
+          userRole={user?.role}
+        />
 
         {/* Contenu des onglets */}
         {activeTab === "stocks" && (
           <>
-
-        <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-          <StatCard
-            title="Total de doses"
-            value={stats.totalQuantity.toLocaleString("fr-FR")}
-            icon={Syringe}
-            accent="emerald"
-            loading={statsLoading}
-          />
-          <StatCard
-            title="Stocks faibles"
-            value={stats.lowStockCount}
-            icon={AlertTriangle}
-            accent="red"
-            loading={statsLoading}
-          />
-          <StatCard
-            title="Lots expirés"
-            value={
-              statsLoading
-                ? "…"
-                : stats.expiredLots.toLocaleString("fr-FR")
-            }
-            icon={AlertTriangle}
-            accent="red"
-            loading={statsLoading}
-          />
-        </div>
+            <StatsCards stats={stats} loading={statsLoading} />
 
         {statsError && (
           <div className="rounded-3xl border border-amber-200 bg-amber-50/80 p-4 text-sm text-amber-700">
@@ -1422,200 +1180,22 @@ export function NationalStocksPage() {
           </div>
         )}
 
-        {pendingTransfers.length > 0 && (
-          <div className="rounded-3xl border border-blue-200 bg-blue-50/80 p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-500">
-                  <PackageOpen className="h-4 w-4 text-white" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-blue-900">
-                    {pendingTransfers.length} envoi{pendingTransfers.length > 1 ? "s" : ""} en attente de confirmation
-                  </p>
-                  <p className="text-xs text-blue-700">
-                    Veuillez confirmer ou refuser les transferts reçus
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setActiveTab("pending-received")}
-                className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700"
-              >
-                Voir les envois
-              </button>
-            </div>
-          </div>
-        )}
+            <PendingTransfersAlert
+              transfers={pendingTransfers}
+              onViewClick={() => setActiveTab("pending-received")}
+            />
 
-        <div className="rounded-xl border border-blue-100 bg-blue-50/50 mb-4">
-          <button
-            type="button"
-            onClick={() => setLegendExpanded(!legendExpanded)}
-            className="w-full px-3 py-2 flex items-center justify-between gap-2 text-left hover:bg-blue-100/50 transition rounded-xl"
-          >
-            <div className="flex items-center gap-2 flex-1">
-              <Info className="h-4 w-4 text-blue-600 flex-shrink-0" />
-              <h4 className="text-xs font-semibold text-blue-900">Qu'est-ce qu'un lot ?</h4>
-            </div>
-            {legendExpanded ? (
-              <ChevronUp className="h-4 w-4 text-blue-600 flex-shrink-0" />
-            ) : (
-              <ChevronDown className="h-4 w-4 text-blue-600 flex-shrink-0" />
-            )}
-          </button>
-          {legendExpanded && (
-            <div className="px-3 pb-2 pt-1">
-              <p className="text-xs text-blue-800 leading-relaxed">
-                Un <strong>lot</strong> représente un ensemble de doses d'un vaccin avec une même date d'expiration. 
-                Chaque stock peut contenir plusieurs lots, chacun ayant sa propre date d'expiration. 
-                Les lots permettent de gérer efficacement la traçabilité et le suivi des vaccins, notamment pour identifier 
-                les doses expirées et optimiser la distribution selon les dates d'expiration.
-              </p>
-            </div>
-          )}
-        </div>
+            <LotLegend />
 
-        <div className="overflow-x-auto rounded-3xl border border-slate-200 bg-white shadow-sm">
-          <table className="min-w-full divide-y divide-slate-200">
-            <thead className="bg-slate-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  Vaccin
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  Quantité (national)
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  Nombre de lots
-                </th>
-                <th className="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200">
-              {loading ? (
-                <tr>
-                  <td colSpan={4} className="px-6 py-8 text-center text-sm text-slate-500">
-                    Chargement des stocks…
-                  </td>
-                </tr>
-              ) : stocks.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="px-6 py-8 text-center text-sm text-slate-500">
-                    Aucun stock national enregistré pour le moment.
-                  </td>
-                </tr>
-              ) : (
-                stocks.map((stock) => {
-                  const lotCount = stock.lotCount ?? 0;
-                  const expiredLotCount = stock.expiredLotCount ?? 0;
-                  const expiredQuantity = stock.expiredQuantity ?? 0;
-                  const totalQuantity = stock.quantity ?? 0;
-                  const validQuantity = totalQuantity - expiredQuantity;
-                  const validLotCount = lotCount - expiredLotCount;
-                  
-                  // Vérifier si le stock peut être envoyé
-                  const canSend = lotCount > 0 && validLotCount > 0 && validQuantity > 0;
-                  const disabledReason = lotCount === 0 
-                    ? "Aucun lot disponible pour ce vaccin"
-                    : validLotCount === 0
-                    ? "Tous les lots sont expirés"
-                    : validQuantity === 0
-                    ? "Toutes les quantités sont expirées"
-                    : "";
-                  
-                  return (
-                    <tr
-                      key={stock.id}
-                      className="hover:bg-slate-50/80"
-                    >
-                    <td className="px-6 py-4">
-                      <div className="font-semibold text-slate-900">
-                        {stock.vaccine.name}
-                      </div>
-                      <div className="text-xs text-slate-500">
-                        {stock.vaccine.description}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="font-semibold text-slate-800">
-                        {(stock.quantity ?? 0).toLocaleString("fr-FR")}
-                        {expiredQuantity > 0 && (
-                          <span className="ml-2 text-sm font-normal text-red-600">
-                            ({expiredQuantity.toLocaleString("fr-FR")} expiré{expiredQuantity > 1 ? "s" : ""})
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-xs text-slate-500">
-                        {stock.vaccine.dosesRequired} doses requises
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-sm">
-                      <div className="font-medium text-slate-700">
-                        {lotCount} lot{lotCount > 1 ? "s" : ""}
-                        {expiredLotCount > 0 && (
-                          <span className="ml-2 text-red-600">
-                            - {expiredLotCount} expiré{expiredLotCount > 1 ? "s" : ""}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenNationalLotModal(stock)}
-                          className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100"
-                        >
-                          <PackageOpen className="h-4 w-4" />
-                          Lots
-                        </button>
-                        <div className="relative group">
-                          <button
-                            type="button"
-                            onClick={() => canSend && openTransferModal(stock)}
-                            disabled={!canSend}
-                            className="flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-600 transition hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-blue-50"
-                            title={!canSend ? disabledReason : undefined}
-                          >
-                            <ArrowRightLeft className="h-4 w-4" />
-                            Envoyer
-                          </button>
-                          {!canSend && (
-                            <div className="absolute bottom-full right-0 mb-2 hidden group-hover:block z-10 w-48 rounded-lg bg-slate-900 px-3 py-2 text-xs text-white shadow-lg">
-                              {disabledReason}
-                              <div className="absolute top-full right-4 -mt-1 h-2 w-2 rotate-45 bg-slate-900"></div>
-                            </div>
-                          )}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => openUpdateModal(stock)}
-                          className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-600 transition hover:bg-emerald-100"
-                        >
-                          Ajuster
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteStock(stock)}
-                          disabled={nationalDeletingId === stock.id}
-                          className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-600 transition hover:bg-red-100 disabled:opacity-60"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                          {nationalDeletingId === stock.id ? "Suppression…" : "Supprimer"}
-                        </button>
-                      </div>
-                    </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+            <NationalStocksTable
+              stocks={stocks}
+              loading={loading}
+              onOpenLots={handleOpenNationalLotModal}
+              onTransfer={openTransferModal}
+              onUpdate={openUpdateModal}
+              onDelete={handleDeleteStock}
+              deletingId={nationalDeletingId}
+            />
           </>
         )}
 
@@ -2610,118 +2190,6 @@ export function NationalStocksPage() {
     </DashboardShell>
   );
 }
-
-type RegionalStock = {
-  id: string;
-  vaccineId: string;
-  regionId: string;
-  quantity: number | null;
-  vaccine: VaccineInfo;
-  region?: {
-    id: string;
-    name: string;
-  } | null;
-  hasExpiredLot?: boolean;
-  nearestExpiration?: string | null;
-  lotCount?: number;
-  expiredLotCount?: number;
-  expiredQuantity?: number;
-};
-
-type DistrictStock = {
-  id: string;
-  vaccineId: string;
-  districtId: string;
-  quantity: number | null;
-  vaccine: VaccineInfo;
-  district?: {
-    id: string;
-    name: string;
-  } | null;
-  hasExpiredLot?: boolean;
-  nearestExpiration?: string | null;
-  lotCount?: number;
-  expiredLotCount?: number;
-  expiredQuantity?: number;
-};
-
-type DistrictOption = {
-  id: string;
-  name: string;
-  regionId?: string | null;
-};
-
-type HealthCenterOption = {
-  id: string;
-  name: string;
-  districtId?: string | null;
-};
-
-type PendingTransfer = {
-  id: string;
-  vaccineId: string;
-  vaccine: VaccineInfo;
-  fromType: string;
-  fromId: string | null;
-  toType: string;
-  toId: string | null;
-  toName?: string | null;
-  quantity: number;
-  status: "PENDING" | "CONFIRMED" | "CANCELLED";
-  createdAt: string;
-  confirmedAt: string | null;
-  confirmedById: string | null;
-  lots: Array<{
-    id: string;
-    lotId: string;
-    quantity: number;
-    lot: {
-      id: string;
-      expiration: string;
-      quantity: number;
-      remainingQuantity: number;
-      status?: string;
-    } | null;
-  }>;
-};
-
-type TransferHistoryItem = {
-  id: string;
-  vaccineId: string;
-  vaccineName: string;
-  fromType: string;
-  fromId: string | null;
-  fromName: string | null;
-  toType: string;
-  toId: string | null;
-  toName: string | null;
-  quantity: number;
-  sentAt: string;
-  confirmedAt: string | null;
-  confirmedById: string | null;
-  confirmedByName: string | null;
-  lotExpiration: string | null;
-  lotStatus: string | null;
-  status: string;
-  createdAt: string;
-};
-
-type HealthCenterStock = {
-  id: string;
-  vaccineId: string;
-  healthCenterId: string;
-  quantity: number | null;
-  vaccine: VaccineInfo;
-  healthCenter?: {
-    id: string;
-    name: string;
-  } | null;
-  hasExpiredLot?: boolean;
-  nearestExpiration?: string | null;
-  lotCount?: number;
-  expiredLotCount?: number;
-  expiredQuantity?: number;
-};
 
 export function RegionalStocksPage() {
   const { accessToken, user } = useAuth();

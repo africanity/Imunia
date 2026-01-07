@@ -34,16 +34,19 @@ jest.mock('../../src/config/prismaClient', () => ({
   commune: {
     findMany: jest.fn(),
     findUnique: jest.fn(),
+    update: jest.fn(),
   },
   district: {
     findMany: jest.fn(),
     findUnique: jest.fn(),
+    update: jest.fn(),
     delete: jest.fn(),
     count: jest.fn(),
   },
   healthCenter: {
     findMany: jest.fn(),
     findUnique: jest.fn(),
+    update: jest.fn(),
     delete: jest.fn(),
     count: jest.fn(),
   },
@@ -103,6 +106,21 @@ jest.mock('../../src/services/tokenService', () => ({
 jest.mock('../../src/controllers/regionController', () => ({
   getRegionDeletionSummary: jest.fn(),
   deleteRegion: jest.fn(),
+}));
+
+jest.mock('../../src/controllers/communeController', () => ({
+  getCommuneDeletionSummary: jest.fn(),
+  deleteCommune: jest.fn(),
+}));
+
+jest.mock('../../src/controllers/districtController', () => ({
+  getDistrictDeletionSummary: jest.fn(),
+  deleteDistrict: jest.fn(),
+}));
+
+jest.mock('../../src/controllers/healthCenterController', () => ({
+  getHealthCenterDeletionSummary: jest.fn(),
+  deleteHealthCenter: jest.fn(),
 }));
 
 jest.mock('fs', () => ({
@@ -203,6 +221,81 @@ describe('superadminController', () => {
       );
     });
 
+    it('devrait filtrer par districtId', async () => {
+      req.query.districtId = 'district-1';
+      const mockDistrict = {
+        id: 'district-1',
+        commune: {
+          regionId: 'region-1',
+        },
+      };
+      prisma.district.findUnique.mockResolvedValue(mockDistrict);
+      prisma.region.findMany.mockResolvedValue([]);
+      prisma.commune.findMany.mockResolvedValue([]);
+      prisma.district.findMany.mockResolvedValue([]);
+      prisma.healthCenter.findMany.mockResolvedValue([]);
+
+      await getAllEntities(req, res, next);
+
+      expect(prisma.district.findUnique).toHaveBeenCalled();
+      expect(prisma.district.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'district-1' },
+        })
+      );
+    });
+
+    it('devrait retourner 404 si district non trouvé', async () => {
+      req.query.districtId = 'district-inexistant';
+      prisma.district.findUnique.mockResolvedValue(null);
+
+      await getAllEntities(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'District non trouvé',
+      });
+    });
+
+    it('devrait filtrer par healthCenterId', async () => {
+      req.query.healthCenterId = 'hc-1';
+      const mockHealthCenter = {
+        id: 'hc-1',
+        district: {
+          id: 'district-1',
+          commune: {
+            regionId: 'region-1',
+          },
+        },
+      };
+      prisma.healthCenter.findUnique.mockResolvedValue(mockHealthCenter);
+      prisma.region.findMany.mockResolvedValue([]);
+      prisma.commune.findMany.mockResolvedValue([]);
+      prisma.district.findMany.mockResolvedValue([]);
+      prisma.healthCenter.findMany.mockResolvedValue([]);
+
+      await getAllEntities(req, res, next);
+
+      expect(prisma.healthCenter.findUnique).toHaveBeenCalled();
+      expect(prisma.healthCenter.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'hc-1' },
+        })
+      );
+    });
+
+    it('devrait retourner 404 si healthCenter non trouvé', async () => {
+      req.query.healthCenterId = 'hc-inexistant';
+      prisma.healthCenter.findUnique.mockResolvedValue(null);
+
+      await getAllEntities(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Centre de santé non trouvé',
+      });
+    });
+
     it('devrait gérer les erreurs', async () => {
       prisma.region.findMany.mockRejectedValue(new Error('DB Error'));
 
@@ -230,6 +323,62 @@ describe('superadminController', () => {
       expect(res.json).toHaveBeenCalledWith(mockRegion);
     });
 
+    it('devrait retourner les détails d\'une commune', async () => {
+      req.params.type = 'commune';
+      req.params.id = 'commune-1';
+      const mockCommune = {
+        id: 'commune-1',
+        name: 'Commune 1',
+        region: { id: 'region-1', name: 'Region 1' },
+        districts: [],
+      };
+
+      prisma.commune.findUnique.mockResolvedValue(mockCommune);
+
+      await getEntityDetails(req, res, next);
+
+      expect(res.json).toHaveBeenCalledWith(mockCommune);
+    });
+
+    it('devrait retourner les détails d\'un district', async () => {
+      req.params.type = 'district';
+      req.params.id = 'district-1';
+      const mockDistrict = {
+        id: 'district-1',
+        name: 'District 1',
+        commune: { region: { id: 'region-1', name: 'Region 1' } },
+        healthCenters: [],
+        users: [],
+      };
+
+      prisma.district.findUnique.mockResolvedValue(mockDistrict);
+
+      await getEntityDetails(req, res, next);
+
+      expect(res.json).toHaveBeenCalledWith(mockDistrict);
+    });
+
+    it('devrait retourner les détails d\'un healthcenter', async () => {
+      req.params.type = 'healthcenter';
+      req.params.id = 'hc-1';
+      const mockHealthCenter = {
+        id: 'hc-1',
+        name: 'Health Center 1',
+        district: {
+          commune: {
+            region: { id: 'region-1', name: 'Region 1' },
+          },
+        },
+        users: [],
+      };
+
+      prisma.healthCenter.findUnique.mockResolvedValue(mockHealthCenter);
+
+      await getEntityDetails(req, res, next);
+
+      expect(res.json).toHaveBeenCalledWith(mockHealthCenter);
+    });
+
     it('devrait retourner 404 si entité non trouvée', async () => {
       req.params.type = 'region';
       req.params.id = 'region-inexistant';
@@ -253,6 +402,16 @@ describe('superadminController', () => {
       expect(res.json).toHaveBeenCalledWith({
         message: 'Type d\'entité invalide',
       });
+    });
+
+    it('devrait gérer les erreurs', async () => {
+      req.params.type = 'region';
+      req.params.id = 'region-1';
+      prisma.region.findUnique.mockRejectedValue(new Error('DB Error'));
+
+      await getEntityDetails(req, res, next);
+
+      expect(next).toHaveBeenCalledWith(expect.any(Error));
     });
   });
 
@@ -287,6 +446,139 @@ describe('superadminController', () => {
       );
     });
 
+    it('devrait mettre à jour une commune avec succès', async () => {
+      req.params.type = 'commune';
+      req.params.id = 'commune-1';
+      req.body.name = 'Commune Updated';
+
+      const mockCommune = {
+        id: 'commune-1',
+        name: 'Commune Updated',
+      };
+
+      prisma.commune.findUnique.mockResolvedValue({ id: 'commune-1' });
+      prisma.commune.update.mockResolvedValue(mockCommune);
+      prisma.user.findMany.mockResolvedValue([]);
+      emailService.sendSuperAdminEntityNotification.mockResolvedValue();
+      eventLogService.logEventAsync.mockResolvedValue();
+
+      await updateEntity(req, res, next);
+
+      expect(prisma.commune.update).toHaveBeenCalled();
+      expect(res.json).toHaveBeenCalledWith(mockCommune);
+    });
+
+    it('devrait mettre à jour un district avec succès', async () => {
+      req.params.type = 'district';
+      req.params.id = 'district-1';
+      req.body.name = 'District Updated';
+
+      const mockDistrict = {
+        id: 'district-1',
+        name: 'District Updated',
+      };
+
+      prisma.district.findUnique.mockResolvedValue({ id: 'district-1' });
+      prisma.district.update.mockResolvedValue(mockDistrict);
+      prisma.user.findMany.mockResolvedValue([]);
+      emailService.sendSuperAdminEntityNotification.mockResolvedValue();
+      eventLogService.logEventAsync.mockResolvedValue();
+
+      await updateEntity(req, res, next);
+
+      expect(prisma.district.update).toHaveBeenCalled();
+      expect(res.json).toHaveBeenCalledWith(mockDistrict);
+    });
+
+    it('devrait mettre à jour un healthcenter avec succès', async () => {
+      req.params.type = 'healthcenter';
+      req.params.id = 'hc-1';
+      req.body.name = 'Health Center Updated';
+      req.body.address = 'New Address';
+
+      const mockHealthCenter = {
+        id: 'hc-1',
+        name: 'Health Center Updated',
+        address: 'New Address',
+      };
+
+      prisma.healthCenter.findUnique.mockResolvedValue({ id: 'hc-1' });
+      prisma.healthCenter.update.mockResolvedValue(mockHealthCenter);
+      prisma.user.findMany.mockResolvedValue([]);
+      emailService.sendSuperAdminEntityNotification.mockResolvedValue();
+      eventLogService.logEventAsync.mockResolvedValue();
+
+      await updateEntity(req, res, next);
+
+      expect(prisma.healthCenter.update).toHaveBeenCalled();
+      expect(res.json).toHaveBeenCalledWith(mockHealthCenter);
+    });
+
+    it('devrait retourner 400 si nom manquant pour région', async () => {
+      req.params.type = 'region';
+      req.params.id = 'region-1';
+      req.body.name = '';
+
+      await updateEntity(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Le nom de la région est requis',
+      });
+    });
+
+    it('devrait retourner 400 si nom manquant pour commune', async () => {
+      req.params.type = 'commune';
+      req.params.id = 'commune-1';
+      req.body.name = '';
+
+      await updateEntity(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Le nom de la commune est requis',
+      });
+    });
+
+    it('devrait retourner 400 si nom manquant pour district', async () => {
+      req.params.type = 'district';
+      req.params.id = 'district-1';
+      req.body.name = '';
+
+      await updateEntity(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Le nom du district est requis',
+      });
+    });
+
+    it('devrait retourner 400 si nom manquant pour healthcenter', async () => {
+      req.params.type = 'healthcenter';
+      req.params.id = 'hc-1';
+      req.body.name = '';
+
+      await updateEntity(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Le nom du centre de santé est requis',
+      });
+    });
+
+    it('devrait retourner 400 si type invalide', async () => {
+      req.params.type = 'invalid';
+      req.params.id = 'id-1';
+      req.body.name = 'Name';
+
+      await updateEntity(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Type d\'entité invalide',
+      });
+    });
+
     it('devrait retourner 404 si entité non trouvée', async () => {
       req.params.type = 'region';
       req.params.id = 'region-inexistant';
@@ -301,6 +593,35 @@ describe('superadminController', () => {
       expect(res.json).toHaveBeenCalledWith({
         message: 'Entité non trouvée',
       });
+    });
+
+    it('devrait retourner 409 si nom déjà utilisé', async () => {
+      req.params.type = 'region';
+      req.params.id = 'region-1';
+      req.body.name = 'Region Updated';
+
+      prisma.region.findUnique.mockResolvedValue({ id: 'region-1' });
+      prisma.region.update.mockRejectedValue({ code: 'P2002' });
+
+      await updateEntity(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(409);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Ce nom est déjà utilisé',
+      });
+    });
+
+    it('devrait gérer les erreurs', async () => {
+      req.params.type = 'region';
+      req.params.id = 'region-1';
+      req.body.name = 'Region Updated';
+
+      prisma.region.findUnique.mockResolvedValue({ id: 'region-1' });
+      prisma.region.update.mockRejectedValue(new Error('DB Error'));
+
+      await updateEntity(req, res, next);
+
+      expect(next).toHaveBeenCalledWith(expect.any(Error));
     });
   });
 
@@ -335,6 +656,101 @@ describe('superadminController', () => {
       );
     });
 
+    it('devrait retourner le résumé de suppression pour une commune', async () => {
+      req.params.type = 'commune';
+      req.params.id = 'commune-1';
+
+      const communeController = require('../../src/controllers/communeController');
+      communeController.getCommuneDeletionSummary.mockImplementation(async (fakeReq, fakeRes) => {
+        fakeRes.json({
+          success: true,
+          commune: { id: fakeReq.params.id, name: 'Commune 1' },
+          totals: {
+            districts: 3,
+            healthCenters: 5,
+            children: 50,
+          },
+        });
+      });
+
+      await getEntityDeletionSummary(req, res, next);
+
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: true,
+          commune: expect.any(Object),
+          totals: expect.any(Object),
+        })
+      );
+    });
+
+    it('devrait retourner le résumé de suppression pour un district', async () => {
+      req.params.type = 'district';
+      req.params.id = 'district-1';
+
+      const districtController = require('../../src/controllers/districtController');
+      districtController.getDistrictDeletionSummary.mockImplementation(async (fakeReq, fakeRes) => {
+        fakeRes.json({
+          success: true,
+          district: { id: fakeReq.params.id, name: 'District 1' },
+          totals: {
+            healthCenters: 5,
+            children: 30,
+            users: 2,
+          },
+        });
+      });
+
+      await getEntityDeletionSummary(req, res, next);
+
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: true,
+          district: expect.any(Object),
+          totals: expect.any(Object),
+        })
+      );
+    });
+
+    it('devrait retourner le résumé de suppression pour un healthcenter', async () => {
+      req.params.type = 'healthcenter';
+      req.params.id = 'hc-1';
+
+      const healthCenterController = require('../../src/controllers/healthCenterController');
+      healthCenterController.getHealthCenterDeletionSummary.mockImplementation(async (fakeReq, fakeRes) => {
+        fakeRes.json({
+          success: true,
+          healthCenter: { id: fakeReq.params.id, name: 'Health Center 1' },
+          totals: {
+            children: 20,
+            users: 1,
+          },
+        });
+      });
+
+      await getEntityDeletionSummary(req, res, next);
+
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: true,
+          healthCenter: expect.any(Object),
+          totals: expect.any(Object),
+        })
+      );
+    });
+
+    it('devrait retourner 400 si type invalide', async () => {
+      req.params.type = 'invalid';
+      req.params.id = 'id-1';
+
+      await getEntityDeletionSummary(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Type d\'entité invalide',
+      });
+    });
+
     it('devrait retourner 404 si entité non trouvée', async () => {
       req.params.type = 'region';
       req.params.id = 'region-inexistant';
@@ -347,6 +763,36 @@ describe('superadminController', () => {
       await getEntityDeletionSummary(req, res, next);
 
       expect(res.status).toHaveBeenCalledWith(404);
+    });
+
+    it('devrait gérer les erreurs avec status', async () => {
+      req.params.type = 'region';
+      req.params.id = 'region-1';
+
+      const regionController = require('../../src/controllers/regionController');
+      regionController.getRegionDeletionSummary.mockRejectedValue({
+        status: 500,
+        message: 'Erreur serveur',
+      });
+
+      await getEntityDeletionSummary(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Erreur serveur',
+      });
+    });
+
+    it('devrait gérer les erreurs génériques', async () => {
+      req.params.type = 'region';
+      req.params.id = 'region-1';
+
+      const regionController = require('../../src/controllers/regionController');
+      regionController.getRegionDeletionSummary.mockRejectedValue(new Error('DB Error'));
+
+      await getEntityDeletionSummary(req, res, next);
+
+      expect(next).toHaveBeenCalledWith(expect.any(Error));
     });
   });
 
@@ -379,7 +825,102 @@ describe('superadminController', () => {
       expect(res.end).toHaveBeenCalled();
     });
 
-    it('devrait retourner 404 si entité non trouvée', async () => {
+    it('devrait supprimer une commune avec cascade', async () => {
+      req.params.type = 'commune';
+      req.params.id = 'commune-1';
+
+      const communeController = require('../../src/controllers/communeController');
+      prisma.commune.findUnique.mockResolvedValue({
+        id: 'commune-1',
+        name: 'Commune 1',
+      });
+      communeController.getCommuneDeletionSummary.mockImplementation(async (fakeReq, fakeRes) => {
+        fakeRes.json({
+          success: true,
+          commune: { id: fakeReq.params.id, name: 'Commune 1' },
+          totals: { districts: 0, healthCenters: 0, children: 0 },
+        });
+      });
+      communeController.deleteCommune.mockImplementation(async (fakeReq, fakeRes) => {
+        fakeRes.status(204).end();
+      });
+      eventLogService.logEventAsync.mockResolvedValue();
+
+      await deleteEntity(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(204);
+      expect(res.end).toHaveBeenCalled();
+    });
+
+    it('devrait supprimer un district avec cascade', async () => {
+      req.params.type = 'district';
+      req.params.id = 'district-1';
+
+      const districtController = require('../../src/controllers/districtController');
+      prisma.district.findUnique.mockResolvedValue({
+        id: 'district-1',
+        name: 'District 1',
+      });
+      prisma.user.findMany.mockResolvedValue([]);
+      districtController.getDistrictDeletionSummary.mockImplementation(async (fakeReq, fakeRes) => {
+        fakeRes.json({
+          success: true,
+          district: { id: fakeReq.params.id, name: 'District 1' },
+          totals: { healthCenters: 0, children: 0, users: 0 },
+        });
+      });
+      districtController.deleteDistrict.mockImplementation(async (fakeReq, fakeRes) => {
+        fakeRes.status(204).end();
+      });
+      eventLogService.logEventAsync.mockResolvedValue();
+
+      await deleteEntity(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(204);
+      expect(res.end).toHaveBeenCalled();
+    });
+
+    it('devrait supprimer un healthcenter avec cascade', async () => {
+      req.params.type = 'healthcenter';
+      req.params.id = 'hc-1';
+
+      const healthCenterController = require('../../src/controllers/healthCenterController');
+      prisma.healthCenter.findUnique.mockResolvedValue({
+        id: 'hc-1',
+        name: 'Health Center 1',
+      });
+      prisma.user.findMany.mockResolvedValue([]);
+      healthCenterController.getHealthCenterDeletionSummary.mockImplementation(async (fakeReq, fakeRes) => {
+        fakeRes.json({
+          success: true,
+          healthCenter: { id: fakeReq.params.id, name: 'Health Center 1' },
+          totals: { children: 0, users: 0 },
+        });
+      });
+      healthCenterController.deleteHealthCenter.mockImplementation(async (fakeReq, fakeRes) => {
+        fakeRes.status(204).end();
+      });
+      eventLogService.logEventAsync.mockResolvedValue();
+
+      await deleteEntity(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(204);
+      expect(res.end).toHaveBeenCalled();
+    });
+
+    it('devrait retourner 400 si type invalide', async () => {
+      req.params.type = 'invalid';
+      req.params.id = 'id-1';
+
+      await deleteEntity(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Type d\'entité invalide',
+      });
+    });
+
+    it('devrait retourner 404 si région non trouvée', async () => {
       req.params.type = 'region';
       req.params.id = 'region-inexistant';
       prisma.region.findUnique.mockResolvedValue(null);
@@ -394,6 +935,85 @@ describe('superadminController', () => {
       expect(res.json).toHaveBeenCalledWith({
         message: 'Région non trouvée',
       });
+    });
+
+    it('devrait retourner 404 si district non trouvé', async () => {
+      req.params.type = 'district';
+      req.params.id = 'district-inexistant';
+      prisma.district.findUnique.mockResolvedValue(null);
+
+      await deleteEntity(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'District non trouvé',
+      });
+    });
+
+    it('devrait retourner 404 si healthcenter non trouvé', async () => {
+      req.params.type = 'healthcenter';
+      req.params.id = 'hc-inexistant';
+      prisma.healthCenter.findUnique.mockResolvedValue(null);
+
+      await deleteEntity(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Centre de santé non trouvé',
+      });
+    });
+
+    it('devrait retourner 404 si commune non trouvée', async () => {
+      req.params.type = 'commune';
+      req.params.id = 'commune-inexistant';
+      prisma.commune.findUnique.mockResolvedValue(null);
+
+      await deleteEntity(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Commune non trouvée',
+      });
+    });
+
+    it('devrait gérer les erreurs lors de la récupération de l\'entité', async () => {
+      req.params.type = 'region';
+      req.params.id = 'region-1';
+      prisma.region.findUnique.mockRejectedValue(new Error('DB Error'));
+
+      await deleteEntity(req, res, next);
+
+      // L'erreur est capturée dans le try/catch et retourne une réponse 500
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Erreur lors de la récupération de l\'entité',
+      });
+    });
+
+    it('devrait gérer les erreurs lors de la suppression', async () => {
+      req.params.type = 'region';
+      req.params.id = 'region-1';
+
+      const regionController = require('../../src/controllers/regionController');
+      prisma.region.findUnique.mockResolvedValue({
+        id: 'region-1',
+        name: 'Region 1',
+      });
+      prisma.user.findMany.mockResolvedValue([]);
+      regionController.getRegionDeletionSummary.mockImplementation(async (fakeReq, fakeRes) => {
+        fakeRes.json({
+          success: true,
+          region: { id: fakeReq.params.id, name: 'Region 1' },
+          totals: { communes: 0, districts: 0, healthCenters: 0, children: 0, users: 0 },
+        });
+      });
+      regionController.deleteRegion.mockImplementation(async (fakeReq, fakeRes) => {
+        throw new Error('Erreur lors de la suppression');
+      });
+
+      await deleteEntity(req, res, next);
+
+      expect(next).toHaveBeenCalledWith(expect.any(Error));
     });
   });
 
@@ -511,6 +1131,170 @@ describe('superadminController', () => {
       );
     });
 
+    it('devrait créer un utilisateur REGIONAL avec succès', async () => {
+      req.body = {
+        firstName: 'Jane',
+        lastName: 'Smith',
+        email: 'jane@test.com',
+        role: 'REGIONAL',
+        regionId: 'region-1',
+      };
+
+      const mockUser = {
+        id: 'user-2',
+        firstName: 'Jane',
+        lastName: 'Smith',
+        email: 'jane@test.com',
+        role: 'REGIONAL',
+        agentLevel: null,
+        isActive: false,
+        createdAt: new Date(),
+      };
+
+      const tokenService = require('../../src/services/tokenService');
+      tokenService.generateActivationToken.mockReturnValue({
+        token: 'activation-token-456',
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      });
+
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.region.findUnique.mockResolvedValue({ id: 'region-1', name: 'Region 1' });
+      prisma.user.findMany.mockResolvedValue([]);
+      prisma.user.create.mockResolvedValue(mockUser);
+      emailService.sendInvitationEmail.mockResolvedValue();
+
+      await createUser(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(201);
+    });
+
+    it('devrait créer un utilisateur DISTRICT avec succès', async () => {
+      req.body = {
+        firstName: 'Bob',
+        lastName: 'Johnson',
+        email: 'bob@test.com',
+        role: 'DISTRICT',
+        districtId: 'district-1',
+      };
+
+      const mockUser = {
+        id: 'user-3',
+        firstName: 'Bob',
+        lastName: 'Johnson',
+        email: 'bob@test.com',
+        role: 'DISTRICT',
+        agentLevel: null,
+        isActive: false,
+        createdAt: new Date(),
+      };
+
+      const tokenService = require('../../src/services/tokenService');
+      tokenService.generateActivationToken.mockReturnValue({
+        token: 'activation-token-789',
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      });
+
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.district.findUnique.mockResolvedValue({
+        id: 'district-1',
+        commune: {
+          regionId: 'region-1',
+          region: { name: 'Region 1' },
+        },
+      });
+      prisma.user.findMany.mockResolvedValue([]);
+      prisma.user.create.mockResolvedValue(mockUser);
+      emailService.sendInvitationEmail.mockResolvedValue();
+
+      await createUser(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(201);
+    });
+
+    it('devrait créer un utilisateur AGENT avec succès', async () => {
+      req.body = {
+        firstName: 'Alice',
+        lastName: 'Williams',
+        email: 'alice@test.com',
+        role: 'AGENT',
+        healthCenterId: 'hc-1',
+        agentLevel: 'ADMIN',
+      };
+
+      const mockUser = {
+        id: 'user-4',
+        firstName: 'Alice',
+        lastName: 'Williams',
+        email: 'alice@test.com',
+        role: 'AGENT',
+        agentLevel: 'ADMIN',
+        isActive: false,
+        createdAt: new Date(),
+      };
+
+      const tokenService = require('../../src/services/tokenService');
+      tokenService.generateActivationToken.mockReturnValue({
+        token: 'activation-token-abc',
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      });
+
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.healthCenter.findUnique.mockResolvedValue({
+        id: 'hc-1',
+        name: 'Health Center 1',
+        districtId: 'district-1',
+        district: {
+          commune: {
+            regionId: 'region-1',
+          },
+        },
+      });
+      prisma.user.findMany.mockResolvedValue([]);
+      prisma.user.create.mockResolvedValue(mockUser);
+      emailService.sendInvitationEmail.mockResolvedValue();
+
+      await createUser(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(201);
+    });
+
+    it('devrait retourner 400 si rôle invalide', async () => {
+      req.body = {
+        firstName: 'John',
+        lastName: 'Doe',
+        email: 'john@test.com',
+        role: 'INVALID',
+      };
+
+      await createUser(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Rôle invalide',
+      });
+    });
+
+    it('devrait retourner 400 si email déjà utilisé', async () => {
+      req.body = {
+        firstName: 'John',
+        lastName: 'Doe',
+        email: 'existing@test.com',
+        role: 'NATIONAL',
+      };
+
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'existing-user',
+        email: 'existing@test.com',
+      });
+
+      await createUser(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Cet email est déjà utilisé',
+      });
+    });
+
     it('devrait retourner 400 si email manquant', async () => {
       req.body = {
         firstName: 'John',
@@ -524,6 +1308,147 @@ describe('superadminController', () => {
       expect(res.json).toHaveBeenCalledWith({
         message: 'Les champs prénom, nom et email sont obligatoires',
       });
+    });
+
+    it('devrait retourner 400 si regionId manquant pour REGIONAL', async () => {
+      req.body = {
+        firstName: 'Jane',
+        lastName: 'Smith',
+        email: 'jane@test.com',
+        role: 'REGIONAL',
+      };
+
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      await createUser(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'La région est obligatoire pour un utilisateur régional',
+      });
+    });
+
+    it('devrait retourner 400 si districtId manquant pour DISTRICT', async () => {
+      req.body = {
+        firstName: 'Bob',
+        lastName: 'Johnson',
+        email: 'bob@test.com',
+        role: 'DISTRICT',
+      };
+
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      await createUser(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Le district est obligatoire pour un utilisateur district',
+      });
+    });
+
+    it('devrait retourner 400 si healthCenterId manquant pour AGENT', async () => {
+      req.body = {
+        firstName: 'Alice',
+        lastName: 'Williams',
+        email: 'alice@test.com',
+        role: 'AGENT',
+        agentLevel: 'ADMIN',
+      };
+
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      await createUser(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Le centre de santé est obligatoire pour un agent',
+      });
+    });
+
+    it('devrait retourner 400 si agentLevel manquant pour AGENT', async () => {
+      req.body = {
+        firstName: 'Alice',
+        lastName: 'Williams',
+        email: 'alice@test.com',
+        role: 'AGENT',
+        healthCenterId: 'hc-1',
+      };
+
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      await createUser(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Le niveau d\'agent (ADMIN ou STAFF) est obligatoire',
+      });
+    });
+
+    it('devrait gérer les erreurs Prisma P2002', async () => {
+      req.body = {
+        firstName: 'John',
+        lastName: 'Doe',
+        email: 'john@test.com',
+        role: 'NATIONAL',
+      };
+
+      const tokenService = require('../../src/services/tokenService');
+      tokenService.generateActivationToken.mockReturnValue({
+        token: 'activation-token-123',
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      });
+
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.user.create.mockRejectedValue({ code: 'P2002' });
+
+      await createUser(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Cet email est déjà utilisé',
+      });
+    });
+
+    it('devrait gérer les erreurs Prisma P2003', async () => {
+      req.body = {
+        firstName: 'Jane',
+        lastName: 'Smith',
+        email: 'jane@test.com',
+        role: 'REGIONAL',
+        regionId: 'region-inexistant',
+      };
+
+      const tokenService = require('../../src/services/tokenService');
+      tokenService.generateActivationToken.mockReturnValue({
+        token: 'activation-token-123',
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      });
+
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.user.create.mockRejectedValue({ code: 'P2003' });
+
+      await createUser(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Une référence invalide a été fournie. Veuillez vérifier les informations saisies (région, district ou centre de santé).',
+      });
+    });
+
+    it('devrait gérer les erreurs génériques', async () => {
+      req.body = {
+        firstName: 'John',
+        lastName: 'Doe',
+        email: 'john@test.com',
+        role: 'NATIONAL',
+      };
+
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.user.create.mockRejectedValue(new Error('DB Error'));
+
+      await createUser(req, res, next);
+
+      expect(next).toHaveBeenCalledWith(expect.any(Error));
     });
   });
 
@@ -897,6 +1822,93 @@ describe('superadminController', () => {
       prisma.appSettings.update.mockResolvedValue(mockSettings);
       prisma.user.findMany.mockResolvedValue([]);
       fs.unlink.mockResolvedValue();
+      emailService.sendSuperAdminSettingsNotification.mockResolvedValue();
+
+      await updateAppSettings(req, res, next);
+
+      expect(prisma.appSettings.update).toHaveBeenCalled();
+      expect(res.json).toHaveBeenCalled();
+    });
+
+    it('devrait supprimer le logo si logoPath est vide string', async () => {
+      req.body = { logoPath: '' };
+
+      const mockSettings = {
+        id: 'settings-1',
+        appName: 'Test App',
+        logoPath: null,
+      };
+
+      prisma.appSettings.findFirst.mockResolvedValue({
+        id: 'settings-1',
+        logoPath: '/uploads/old-logo.png',
+      });
+      prisma.appSettings.update.mockResolvedValue(mockSettings);
+      prisma.user.findMany.mockResolvedValue([]);
+      fs.unlink.mockResolvedValue();
+      emailService.sendSuperAdminSettingsNotification.mockResolvedValue();
+
+      await updateAppSettings(req, res, next);
+
+      expect(fs.unlink).toHaveBeenCalled();
+      expect(prisma.appSettings.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            logoPath: null,
+          }),
+        })
+      );
+    });
+
+    it('devrait garder l\'ancien logo si aucun nouveau logo n\'est fourni', async () => {
+      req.body = { appName: 'Test App' };
+
+      const mockSettings = {
+        id: 'settings-1',
+        appName: 'Test App',
+        logoPath: '/uploads/existing-logo.png',
+      };
+
+      prisma.appSettings.findFirst.mockResolvedValue({
+        id: 'settings-1',
+        appName: 'Old App Name',
+        logoPath: '/uploads/existing-logo.png',
+      });
+      prisma.appSettings.update.mockResolvedValue(mockSettings);
+      prisma.user.findMany.mockResolvedValue([]);
+      emailService.sendSuperAdminSettingsNotification.mockResolvedValue();
+
+      await updateAppSettings(req, res, next);
+
+      expect(prisma.appSettings.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            logoPath: '/uploads/existing-logo.png',
+          }),
+        })
+      );
+    });
+
+    it('devrait gérer les erreurs lors de la suppression de l\'ancien logo', async () => {
+      req.body = { appName: 'Test App' };
+      req.file = {
+        filename: 'logo-123456789.png',
+        path: '/tmp/logo-123456789.png',
+      };
+
+      const mockSettings = {
+        id: 'settings-1',
+        appName: 'Test App',
+        logoPath: '/uploads/logo-123456789.png',
+      };
+
+      prisma.appSettings.findFirst.mockResolvedValue({
+        id: 'settings-1',
+        logoPath: '/uploads/old-logo.png',
+      });
+      prisma.appSettings.update.mockResolvedValue(mockSettings);
+      prisma.user.findMany.mockResolvedValue([]);
+      fs.unlink.mockRejectedValue(new Error('File not found'));
       emailService.sendSuperAdminSettingsNotification.mockResolvedValue();
 
       await updateAppSettings(req, res, next);
