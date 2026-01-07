@@ -240,8 +240,8 @@ describe("System Settings API - Paramètres système", () => {
     it("Retourne les valeurs correctes avec un appName personnalisé", async () => {
       await prisma.appSettings.create({
         data: {
-          appName: "VaxCare Pro",
-          logoPath: "/vaxcare-logo.png",
+          appName: "Imunia Pro",
+          logoPath: "/Imunia-logo.png",
           updatedById: superadminUserId,
         },
       });
@@ -249,8 +249,8 @@ describe("System Settings API - Paramètres système", () => {
       const res = await request(app).get("/api/systemSettings");
 
       expect(res.statusCode).toBe(200);
-      expect(res.body.appName).toBe("VaxCare Pro");
-      expect(res.body.logoUrl).toBe("/vaxcare-logo.png");
+      expect(res.body.appName).toBe("Imunia Pro");
+      expect(res.body.logoUrl).toBe("/Imunia-logo.png");
     });
 
     it("Retourne les valeurs correctes avec un appName avec espaces à trimmer", async () => {

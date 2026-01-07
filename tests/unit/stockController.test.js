@@ -41,6 +41,13 @@ const {
   getHealthCenterReservations,
   getPendingTransfers,
   confirmPendingTransfer,
+  rejectPendingTransfer,
+  cancelPendingTransfer,
+  getTransferHistory,
+  getPendingTransfersForSender,
+  getStockHealthCenterDeleteImpact,
+  getLotDeleteImpact,
+  getLotReduceImpact,
 } = require('../../src/controllers/stockController');
 
 const prisma = require('../../src/config/prismaClient');
@@ -151,6 +158,7 @@ jest.mock('../../src/config/prismaClient', () => ({
     create: jest.fn(),
     delete: jest.fn(),
     deleteMany: jest.fn(),
+    count: jest.fn(),
   },
   pendingStockTransfer: {
     findUnique: jest.fn(),
@@ -158,10 +166,29 @@ jest.mock('../../src/config/prismaClient', () => ({
     create: jest.fn(),
     update: jest.fn(),
     delete: jest.fn(),
+    deleteMany: jest.fn(),
+    count: jest.fn(),
   },
   pendingStockTransferLot: {
     create: jest.fn(),
     deleteMany: jest.fn(),
+    findMany: jest.fn(),
+  },
+  stockTransfer: {
+    findMany: jest.fn(),
+    count: jest.fn(),
+  },
+  stockTransferHistory: {
+    findMany: jest.fn(),
+    count: jest.fn(),
+    create: jest.fn(),
+  },
+  stockTransferLot: {
+    findMany: jest.fn(),
+  },
+  childVaccineScheduled: {
+    findMany: jest.fn(),
+    updateMany: jest.fn(),
   },
   user: {
     findUnique: jest.fn(),
@@ -181,7 +208,7 @@ jest.mock('../../src/config/prismaClient', () => ({
   region: {
     findUnique: jest.fn(),
   },
-  $transaction: jest.fn((callback) => {
+  $transaction: jest.fn(async (callback) => {
     const mockPrisma = require('../../src/config/prismaClient');
     const mockTx = {
       StockNATIONAL: mockPrisma.StockNATIONAL,
@@ -196,13 +223,17 @@ jest.mock('../../src/config/prismaClient', () => ({
       stockReservation: mockPrisma.stockReservation,
       pendingStockTransfer: mockPrisma.pendingStockTransfer,
       pendingStockTransferLot: mockPrisma.pendingStockTransferLot,
+      stockTransfer: mockPrisma.stockTransfer,
+      stockTransferHistory: mockPrisma.stockTransferHistory,
+      stockTransferLot: mockPrisma.stockTransferLot,
+      childVaccineScheduled: mockPrisma.childVaccineScheduled,
       user: mockPrisma.user,
       district: mockPrisma.district,
       commune: mockPrisma.commune,
       healthCenter: mockPrisma.healthCenter,
       region: mockPrisma.region,
     };
-    return callback(mockTx);
+    return await callback(mockTx);
   }),
 }));
 
@@ -224,10 +255,14 @@ jest.mock('../../src/services/stockLotService', () => ({
   recordTransfer: jest.fn(),
   deleteLotCascade: jest.fn(),
   updateNearestExpiration: jest.fn(),
+  restoreOrRecreateLotForRejectedTransfer: jest.fn(),
+  normalizeOwnerId: jest.fn(),
 }));
 
 jest.mock('../../src/services/emailService', () => ({
   sendStockTransferNotificationEmail: jest.fn(),
+  sendTransferRejectedEmail: jest.fn(),
+  sendTransferCancelledEmail: jest.fn(),
 }));
 
 describe('stockController', () => {
@@ -703,6 +738,30 @@ describe('stockController', () => {
       const response = res.json.mock.calls[0][0];
       expect(response.national).toBeDefined();
     });
+
+    it('devrait retourner la liste des stocks nationaux avec succès pour SUPERADMIN', async () => {
+      req.user.role = 'SUPERADMIN';
+      const mockStocks = [
+        { id: 'stock-1', vaccineId: 'vaccine-1', vaccine: { name: 'BCG' } },
+      ];
+      prisma.stockNATIONAL.findMany.mockResolvedValue(mockStocks);
+      prisma.stockLot.findMany.mockResolvedValue([]);
+
+      await getStockNATIONAL(req, res, next);
+
+      expect(res.json).toHaveBeenCalled();
+      const response = res.json.mock.calls[0][0];
+      expect(response.national).toBeDefined();
+    });
+
+    it('devrait gérer les erreurs', async () => {
+      const error = new Error('Erreur base de données');
+      prisma.stockNATIONAL.findMany.mockRejectedValue(error);
+
+      await getStockNATIONAL(req, res, next);
+
+      expect(next).toHaveBeenCalledWith(error);
+    });
   });
 
   describe('listNationalLots', () => {
@@ -727,9 +786,34 @@ describe('stockController', () => {
       expect(response.totalRemaining).toBeDefined();
     });
 
+    it('devrait retourner la liste des lots nationaux avec succès pour SUPERADMIN', async () => {
+      req.user.role = 'SUPERADMIN';
+      req.params.vaccineId = 'vaccine-1';
+      const mockLots = [
+        { id: 'lot-1', vaccineId: 'vaccine-1', quantity: 100, remainingQuantity: 100, expiration: new Date(), status: 'VALID', _count: { derivedLots: 0 } },
+      ];
+      prisma.stockLot.findMany.mockResolvedValue(mockLots);
+
+      await listNationalLots(req, res, next);
+
+      expect(res.json).toHaveBeenCalled();
+      const response = res.json.mock.calls[0][0];
+      expect(response.lots).toBeDefined();
+    });
+
     it('devrait retourner 400 si vaccineId manquant', async () => {
       await listNationalLots(req, res, next);
       expect(res.status).toHaveBeenCalledWith(400);
+    });
+
+    it('devrait gérer les erreurs', async () => {
+      req.params.vaccineId = 'vaccine-1';
+      const error = new Error('Erreur base de données');
+      prisma.stockLot.findMany.mockRejectedValue(error);
+
+      await listNationalLots(req, res, next);
+
+      expect(next).toHaveBeenCalledWith(error);
     });
   });
 
@@ -1092,16 +1176,31 @@ describe('stockController', () => {
       req.params.id = 'lot-1';
       const mockLot = { 
         id: 'lot-1', 
-        ownerType: 'NATIONAL', 
+        ownerType: 'NATIONAL', // Doit correspondre à OWNER_TYPES.NATIONAL
         ownerId: null,
-        status: 'ACTIVE',
+        status: 'VALID', // Utiliser LOT_STATUS.VALID au lieu de 'ACTIVE'
         expiration: new Date('2025-12-31')
       };
-      stockLotService.deleteLotDirect.mockResolvedValue('lot-1');
+      
+      // S'assurer que deleteLotDirect retourne bien 'lot-1'
+      stockLotService.deleteLotDirect.mockImplementation(async (tx, lotId) => {
+        // Vérifier que tx et lotId sont bien passés
+        expect(tx).toBeDefined();
+        expect(lotId).toBe('lot-1');
+        return 'lot-1';
+      });
+      
       prisma.$transaction.mockImplementation(async (callback) => {
         const mockTx = {
           stockLot: {
             findUnique: jest.fn().mockResolvedValue(mockLot),
+          },
+          stockReservation: {
+            findMany: jest.fn().mockResolvedValue([]), // Pas de réservations pour NATIONAL
+          },
+          childVaccineScheduled: {
+            findMany: jest.fn().mockResolvedValue([]),
+            update: jest.fn().mockResolvedValue({}),
           },
         };
         return callback(mockTx);
@@ -1109,6 +1208,7 @@ describe('stockController', () => {
 
       await deleteLot(req, res, next);
 
+      expect(stockLotService.deleteLotDirect).toHaveBeenCalled();
       expect(res.json).toHaveBeenCalled();
       const response = res.json.mock.calls[0][0];
       expect(response.deletedId).toEqual('lot-1');
@@ -1505,6 +1605,13 @@ describe('stockController', () => {
             update: jest.fn().mockResolvedValue({ ...mockLot, remainingQuantity: 90 }),
           },
           stockHEALTHCENTER: {
+            update: jest.fn().mockResolvedValue({}),
+          },
+          stockReservation: {
+            findMany: jest.fn().mockResolvedValue([]), // Pas de réservations pour ce test
+          },
+          childVaccineScheduled: {
+            findMany: jest.fn().mockResolvedValue([]),
             update: jest.fn().mockResolvedValue({}),
           },
         };
@@ -2595,6 +2702,24 @@ describe('stockController', () => {
       expect(res.status).toHaveBeenCalledWith(403);
     });
 
+    it('devrait retourner un tableau vide si healthCenterId non trouvé pour AGENT', async () => {
+      req.user.role = 'AGENT';
+      req.user.agentLevel = 'ADMIN';
+      req.user.id = 'user-1';
+      delete req.user.healthCenterId; // Pas de healthCenterId dans user
+      // resolveHealthCenterIdForUser va chercher dans la DB (appelé 2 fois dans getHealthCenterStockStats)
+      prisma.user.findUnique.mockResolvedValue({ healthCenterId: null }); // healthCenterId non trouvé dans DB
+
+      await getHealthCenterStockStats(req, res, next);
+
+      expect(res.json).toHaveBeenCalledWith({
+        totalLots: 0,
+        totalQuantity: 0,
+        lowStockCount: 0,
+        threshold: 50,
+      });
+    });
+
     it('devrait retourner les statistiques du stock centre de santé avec succès (AGENT ADMIN)', async () => {
       req.user.role = 'AGENT';
       req.user.agentLevel = 'ADMIN';
@@ -2619,9 +2744,33 @@ describe('stockController', () => {
         }),
       );
     });
+
+    it('devrait gérer les erreurs', async () => {
+      req.user.role = 'AGENT';
+      req.user.agentLevel = 'ADMIN';
+      prisma.user.findUnique.mockResolvedValue({ healthCenterId: 'healthcenter-1' });
+      const error = new Error('Erreur base de données');
+      prisma.stockHEALTHCENTER.aggregate.mockRejectedValue(error);
+
+      await getHealthCenterStockStats(req, res, next);
+
+      expect(next).toHaveBeenCalledWith(error);
+    });
   });
 
   describe('getHealthCenterReservations', () => {
+    it('devrait retourner un tableau vide si healthCenterId non trouvé pour AGENT', async () => {
+      req.user.role = 'AGENT';
+      req.user.agentLevel = 'ADMIN';
+      req.user.id = 'user-1';
+      delete req.user.healthCenterId; // Pas de healthCenterId dans user
+      // resolveHealthCenterIdForUser va chercher dans la DB
+      prisma.user.findUnique.mockResolvedValue({ healthCenterId: null }); // healthCenterId non trouvé dans DB
+
+      await getHealthCenterReservations(req, res, next);
+
+      expect(res.json).toHaveBeenCalledWith({ reservations: [] });
+    });
     it('devrait retourner 403 si utilisateur n\'a pas les permissions', async () => {
       req.user.role = 'INVALID_ROLE';
       await getHealthCenterReservations(req, res, next);
@@ -2666,6 +2815,572 @@ describe('stockController', () => {
       req.user.agentLevel = null;
       await getHealthCenterReservations(req, res, next);
       expect(res.status).toHaveBeenCalledWith(403);
+    });
+
+    it('devrait retourner 400 si healthCenterId manquant pour DISTRICT', async () => {
+      req.user.role = 'DISTRICT';
+      req.query = {};
+      prisma.user.findUnique.mockResolvedValue({ districtId: 'district-1' });
+
+      await getHealthCenterReservations(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({ message: 'healthCenterId est requis' });
+    });
+
+    it('devrait retourner 400 si districtId non trouvé pour DISTRICT', async () => {
+      req.user.role = 'DISTRICT';
+      req.user.id = 'user-1';
+      delete req.user.districtId; // Pas de districtId dans user
+      req.query.healthCenterId = 'healthcenter-1';
+      // resolveDistrictIdForUser va chercher dans la DB
+      prisma.user.findUnique.mockResolvedValue({ districtId: null }); // districtId non trouvé dans DB
+
+      await getHealthCenterReservations(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({ message: 'Votre compte n\'est pas associé à un district' });
+    });
+
+    it('devrait retourner 403 si healthCenter hors district pour DISTRICT', async () => {
+      req.user.role = 'DISTRICT';
+      req.query.healthCenterId = 'healthcenter-1';
+      prisma.user.findUnique.mockResolvedValue({ districtId: 'district-1' });
+      prisma.healthCenter.findUnique.mockResolvedValue({ districtId: 'district-2' });
+
+      await getHealthCenterReservations(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith({ message: 'Centre de santé hors de votre district' });
+    });
+
+    it('devrait retourner 400 si healthCenterId manquant pour REGIONAL', async () => {
+      req.user.role = 'REGIONAL';
+      req.query = {};
+      prisma.user.findUnique.mockResolvedValue({ regionId: 'region-1' });
+
+      await getHealthCenterReservations(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({ message: 'healthCenterId est requis' });
+    });
+
+    it('devrait retourner 400 si regionId non trouvé pour REGIONAL', async () => {
+      req.user.role = 'REGIONAL';
+      req.user.id = 'user-1';
+      delete req.user.regionId; // Pas de regionId dans user
+      req.query.healthCenterId = 'healthcenter-1';
+      // resolveRegionIdForUser va chercher dans la DB
+      prisma.user.findUnique.mockResolvedValue({ regionId: null }); // regionId non trouvé dans DB
+
+      await getHealthCenterReservations(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({ message: 'Votre compte n\'est pas associé à une région' });
+    });
+
+    it('devrait retourner 403 si healthCenter hors région pour REGIONAL', async () => {
+      req.user.role = 'REGIONAL';
+      req.query.healthCenterId = 'healthcenter-1';
+      prisma.user.findUnique.mockResolvedValue({ regionId: 'region-1' });
+      prisma.healthCenter.findUnique.mockResolvedValue({
+        district: {
+          commune: {
+            regionId: 'region-2',
+          },
+        },
+      });
+
+      await getHealthCenterReservations(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith({ message: 'Centre de santé hors de votre région' });
+    });
+
+    it('devrait retourner 400 si healthCenterId manquant pour NATIONAL', async () => {
+      req.user.role = 'NATIONAL';
+      req.query = {};
+
+      await getHealthCenterReservations(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({ message: 'healthCenterId est requis' });
+    });
+
+    it('devrait gérer les erreurs', async () => {
+      req.user.role = 'AGENT';
+      req.user.agentLevel = 'ADMIN';
+      prisma.user.findUnique.mockResolvedValue({ healthCenterId: 'healthcenter-1' });
+      const error = new Error('Erreur base de données');
+      prisma.stockReservation.findMany.mockRejectedValue(error);
+
+      await getHealthCenterReservations(req, res, next);
+
+      expect(next).toHaveBeenCalledWith(error);
+    });
+  });
+
+  describe('rejectPendingTransfer', () => {
+    it('devrait retourner 403 si utilisateur n\'est pas autorisé', async () => {
+      req.user.role = 'NATIONAL';
+      req.params.transferId = 'transfer-1';
+      await rejectPendingTransfer(req, res, next);
+      expect(res.status).toHaveBeenCalledWith(403);
+    });
+
+    it('devrait rejeter un transfert avec succès (REGIONAL)', async () => {
+      req.user.role = 'REGIONAL';
+      req.user.regionId = 'region-1';
+      req.params.transferId = 'transfer-1';
+      
+      const mockTransfer = {
+        id: 'transfer-1',
+        status: 'PENDING',
+        vaccineId: 'vaccine-1',
+        fromType: 'NATIONAL',
+        fromId: null,
+        toType: 'REGIONAL',
+        toId: 'region-1',
+        quantity: 100,
+        vaccine: { name: 'Test Vaccine' },
+        lots: [],
+      };
+
+      prisma.pendingStockTransfer.findUnique.mockResolvedValue(mockTransfer);
+      prisma.stockLot.findFirst.mockResolvedValue(null);
+      stockLotService.restoreOrRecreateLotForRejectedTransfer.mockResolvedValue({ restored: true });
+      prisma.pendingStockTransfer.update.mockResolvedValue({ ...mockTransfer, status: 'REJECTED' });
+      prisma.pendingStockTransferLot.deleteMany.mockResolvedValue({ count: 0 });
+      prisma.pendingStockTransfer.deleteMany.mockResolvedValue({ count: 1 });
+
+      await rejectPendingTransfer(req, res, next);
+
+      expect(prisma.$transaction).toHaveBeenCalled();
+      expect(res.json).toHaveBeenCalled();
+    });
+
+    it('devrait retourner 404 si transfert introuvable', async () => {
+      req.user.role = 'REGIONAL';
+      req.user.regionId = 'region-1';
+      req.params.transferId = 'transfer-1';
+      
+      // Mock la transaction pour lancer l'erreur
+      const mockPrisma = require('../../src/config/prismaClient');
+      prisma.$transaction.mockImplementationOnce(async (callback) => {
+        const mockTx = {
+          pendingStockTransfer: {
+            findUnique: jest.fn().mockResolvedValue(null),
+            update: mockPrisma.pendingStockTransfer.update,
+            deleteMany: mockPrisma.pendingStockTransfer.deleteMany,
+            delete: mockPrisma.pendingStockTransfer.delete,
+          },
+          stockLot: {
+            ...mockPrisma.stockLot,
+            findFirst: jest.fn().mockResolvedValue(null),
+            findUnique: jest.fn().mockResolvedValue(null),
+          },
+          pendingStockTransferLot: {
+            ...mockPrisma.pendingStockTransferLot,
+            deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+          },
+          stockTransferHistory: {
+            create: jest.fn().mockResolvedValue({}),
+          },
+          region: {
+            findUnique: jest.fn().mockResolvedValue(null),
+          },
+          district: {
+            findUnique: jest.fn().mockResolvedValue(null),
+          },
+          healthCenter: {
+            findUnique: jest.fn().mockResolvedValue(null),
+          },
+        };
+        // L'erreur sera lancée dans le callback et doit être propagée
+        return await callback(mockTx);
+      });
+
+      await rejectPendingTransfer(req, res, next);
+
+      // Le catch vérifie error.status et retourne res.status au lieu de next
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalledWith({ message: 'Transfert introuvable' });
+    });
+  });
+
+  describe('cancelPendingTransfer', () => {
+    it('devrait retourner 403 si utilisateur n\'est pas autorisé', async () => {
+      req.user.role = 'AGENT';
+      req.params.transferId = 'transfer-1';
+      await cancelPendingTransfer(req, res, next);
+      expect(res.status).toHaveBeenCalledWith(403);
+    });
+
+    it('devrait annuler un transfert avec succès (NATIONAL)', async () => {
+      req.user.role = 'NATIONAL';
+      req.params.transferId = 'transfer-1';
+      
+      const mockTransfer = {
+        id: 'transfer-1',
+        status: 'PENDING',
+        vaccineId: 'vaccine-1',
+        fromType: 'NATIONAL',
+        fromId: null,
+        toType: 'REGIONAL',
+        toId: 'region-1',
+        quantity: 100,
+        vaccine: { name: 'Test Vaccine' },
+        lots: [],
+      };
+
+      prisma.pendingStockTransfer.findUnique.mockResolvedValue(mockTransfer);
+      prisma.stockLot.findFirst.mockResolvedValue(null);
+      stockLotService.restoreOrRecreateLotForRejectedTransfer.mockResolvedValue({ restored: true });
+      prisma.pendingStockTransfer.update.mockResolvedValue({ ...mockTransfer, status: 'CANCELLED' });
+      prisma.pendingStockTransferLot.deleteMany.mockResolvedValue({ count: 0 });
+      prisma.pendingStockTransfer.deleteMany.mockResolvedValue({ count: 1 });
+
+      await cancelPendingTransfer(req, res, next);
+
+      expect(prisma.$transaction).toHaveBeenCalled();
+      expect(res.json).toHaveBeenCalled();
+    });
+  });
+
+  describe('getTransferHistory', () => {
+    it('devrait retourner 403 si utilisateur n\'est pas autorisé', async () => {
+      req.user.role = 'PARENT';
+      await getTransferHistory(req, res, next);
+      expect(res.status).toHaveBeenCalledWith(403);
+    });
+
+    it('devrait retourner l\'historique des transferts (NATIONAL)', async () => {
+      req.user.role = 'NATIONAL';
+      req.query = { page: '1', limit: '20' };
+      
+      prisma.stockTransferHistory.findMany.mockResolvedValue([]);
+      prisma.stockTransferHistory.count.mockResolvedValue(0);
+
+      await getTransferHistory(req, res, next);
+
+      expect(prisma.stockTransferHistory.findMany).toHaveBeenCalled();
+      expect(prisma.stockTransferHistory.count).toHaveBeenCalled();
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          history: expect.any(Array),
+          total: expect.any(Number),
+          page: expect.any(Number),
+          limit: expect.any(Number),
+        })
+      );
+    });
+
+    it('devrait filtrer par confirmedStartDate et confirmedEndDate', async () => {
+      req.user.role = 'NATIONAL';
+      req.query = { page: '1', limit: '20', confirmedStartDate: '2024-01-01', confirmedEndDate: '2024-12-31' };
+      prisma.stockTransferHistory.findMany.mockResolvedValue([]);
+      prisma.stockTransferHistory.count.mockResolvedValue(0);
+
+      await getTransferHistory(req, res, next);
+
+      expect(prisma.stockTransferHistory.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            confirmedAt: expect.objectContaining({
+              gte: expect.any(Date),
+              lte: expect.any(Date),
+            }),
+          }),
+        }),
+      );
+    });
+
+    it('devrait utiliser AND conditions quand plusieurs filtres sont présents', async () => {
+      req.user.role = 'NATIONAL';
+      req.query = { page: '1', limit: '20', search: 'BCG', vaccineId: 'vaccine-1' };
+      prisma.stockTransferHistory.findMany.mockResolvedValue([]);
+      prisma.stockTransferHistory.count.mockResolvedValue(0);
+
+      await getTransferHistory(req, res, next);
+
+      expect(prisma.stockTransferHistory.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            AND: expect.any(Array),
+          }),
+        }),
+      );
+    });
+
+    it('devrait gérer les erreurs', async () => {
+      req.user.role = 'NATIONAL';
+      req.query = { page: '1', limit: '20' };
+      const error = new Error('Erreur base de données');
+      prisma.stockTransferHistory.findMany.mockRejectedValue(error);
+
+      await getTransferHistory(req, res, next);
+
+      expect(next).toHaveBeenCalledWith(error);
+    });
+  });
+
+  describe('getPendingTransfersForSender', () => {
+    it('devrait retourner 403 si utilisateur n\'est pas autorisé', async () => {
+      req.user.role = 'AGENT';
+      await getPendingTransfersForSender(req, res, next);
+      expect(res.status).toHaveBeenCalledWith(403);
+    });
+
+    it('devrait retourner les transferts en attente pour NATIONAL', async () => {
+      req.user.role = 'NATIONAL';
+      
+      prisma.pendingStockTransfer.findMany.mockResolvedValue([]);
+
+      await getPendingTransfersForSender(req, res, next);
+
+      expect(res.json).toHaveBeenCalledWith({ transfers: [] });
+    });
+
+    it('devrait retourner les transferts en attente pour REGIONAL', async () => {
+      req.user.role = 'REGIONAL';
+      prisma.user.findUnique.mockResolvedValue({ regionId: 'region-1' });
+      prisma.pendingStockTransfer.findMany.mockResolvedValue([]);
+
+      await getPendingTransfersForSender(req, res, next);
+
+      expect(prisma.pendingStockTransfer.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            fromType: 'REGIONAL',
+            fromId: 'region-1',
+          }),
+        }),
+      );
+    });
+
+    it('devrait retourner les transferts en attente pour DISTRICT', async () => {
+      req.user.role = 'DISTRICT';
+      prisma.user.findUnique.mockResolvedValue({ districtId: 'district-1' });
+      prisma.pendingStockTransfer.findMany.mockResolvedValue([]);
+
+      await getPendingTransfersForSender(req, res, next);
+
+      expect(prisma.pendingStockTransfer.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            fromType: 'DISTRICT',
+            fromId: 'district-1',
+          }),
+        }),
+      );
+    });
+
+    it('devrait retourner les transferts en attente pour SUPERADMIN avec regionId', async () => {
+      req.user.role = 'SUPERADMIN';
+      req.query.regionId = 'region-1';
+      prisma.user.findUnique.mockResolvedValue({ regionId: 'region-1' });
+      prisma.pendingStockTransfer.findMany.mockResolvedValue([]);
+
+      await getPendingTransfersForSender(req, res, next);
+
+      expect(prisma.pendingStockTransfer.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            fromType: 'REGIONAL',
+            fromId: 'region-1',
+          }),
+        }),
+      );
+    });
+
+    it('devrait retourner les transferts en attente pour SUPERADMIN avec districtId', async () => {
+      req.user.role = 'SUPERADMIN';
+      req.query.districtId = 'district-1';
+      prisma.user.findUnique.mockResolvedValue({ districtId: 'district-1' });
+      prisma.pendingStockTransfer.findMany.mockResolvedValue([]);
+
+      await getPendingTransfersForSender(req, res, next);
+
+      expect(prisma.pendingStockTransfer.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            fromType: 'DISTRICT',
+            fromId: 'district-1',
+          }),
+        }),
+      );
+    });
+
+    it('devrait retourner un tableau vide si regionId non trouvé pour REGIONAL', async () => {
+      req.user.role = 'REGIONAL';
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.pendingStockTransfer.findMany.mockResolvedValue([]);
+
+      await getPendingTransfersForSender(req, res, next);
+
+      expect(res.json).toHaveBeenCalledWith({ transfers: [] });
+    });
+
+    it('devrait retourner un tableau vide si districtId non trouvé pour DISTRICT', async () => {
+      req.user.role = 'DISTRICT';
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.pendingStockTransfer.findMany.mockResolvedValue([]);
+
+      await getPendingTransfersForSender(req, res, next);
+
+      expect(res.json).toHaveBeenCalledWith({ transfers: [] });
+    });
+
+    it('devrait ajouter toName avec getOwnerName', async () => {
+      req.user.role = 'NATIONAL';
+      const mockTransfers = [
+        {
+          id: 'transfer-1',
+          toType: 'REGIONAL',
+          toId: 'region-1',
+          vaccine: { name: 'BCG' },
+          lots: [],
+        },
+      ];
+      prisma.pendingStockTransfer.findMany.mockResolvedValue(mockTransfers);
+      prisma.region.findUnique.mockResolvedValue({ name: 'Dakar' });
+
+      await getPendingTransfersForSender(req, res, next);
+
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          transfers: expect.arrayContaining([
+            expect.objectContaining({
+              toName: 'Dakar',
+            }),
+          ]),
+        }),
+      );
+    });
+
+    it('devrait utiliser le fallback si getOwnerName retourne null', async () => {
+      req.user.role = 'NATIONAL';
+      const mockTransfers = [
+        {
+          id: 'transfer-1',
+          toType: 'REGIONAL',
+          toId: 'region-1',
+          vaccine: { name: 'BCG' },
+          lots: [],
+        },
+      ];
+      prisma.pendingStockTransfer.findMany.mockResolvedValue(mockTransfers);
+      prisma.region.findUnique.mockResolvedValue(null);
+
+      await getPendingTransfersForSender(req, res, next);
+
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          transfers: expect.arrayContaining([
+            expect.objectContaining({
+              toName: 'Région',
+            }),
+          ]),
+        }),
+      );
+    });
+
+    it('devrait gérer les erreurs', async () => {
+      req.user.role = 'NATIONAL';
+      const error = new Error('Erreur base de données');
+      prisma.pendingStockTransfer.findMany.mockRejectedValue(error);
+
+      await getPendingTransfersForSender(req, res, next);
+
+      expect(next).toHaveBeenCalledWith(error);
+    });
+  });
+
+  describe('getStockHealthCenterDeleteImpact', () => {
+    it('devrait retourner 403 si utilisateur n\'est pas SUPERADMIN', async () => {
+      req.user.role = 'NATIONAL';
+      req.query = { vaccineId: 'vaccine-1', healthCenterId: 'hc-1' };
+      await getStockHealthCenterDeleteImpact(req, res, next);
+      expect(res.status).toHaveBeenCalledWith(403);
+    });
+
+    it('devrait retourner l\'impact de suppression', async () => {
+      req.user.role = 'SUPERADMIN';
+      req.query = { vaccineId: 'vaccine-1', healthCenterId: 'hc-1' };
+      
+      prisma.stockLot.findMany.mockResolvedValue([{ id: 'lot-1' }]);
+      prisma.stockReservation.findMany.mockResolvedValue([
+        { scheduleId: 'schedule-1' },
+        { scheduleId: 'schedule-2' },
+      ]);
+
+      await getStockHealthCenterDeleteImpact(req, res, next);
+
+      expect(res.json).toHaveBeenCalledWith({
+        vaccineId: 'vaccine-1',
+        healthCenterId: 'hc-1',
+        affectedAppointments: 2,
+        willCancelAppointments: true,
+      });
+    });
+  });
+
+  describe('getLotDeleteImpact', () => {
+    it('devrait retourner 403 si utilisateur n\'est pas SUPERADMIN', async () => {
+      req.user.role = 'NATIONAL';
+      req.params.id = 'lot-1';
+      await getLotDeleteImpact(req, res, next);
+      expect(res.status).toHaveBeenCalledWith(403);
+    });
+
+    it('devrait retourner l\'impact de suppression d\'un lot', async () => {
+      req.user.role = 'SUPERADMIN';
+      req.params.id = 'lot-1';
+      
+      prisma.stockLot.findUnique.mockResolvedValue({
+        id: 'lot-1',
+        ownerType: 'HEALTHCENTER',
+        ownerId: 'hc-1',
+      });
+      prisma.stockReservation.count.mockResolvedValue(5);
+
+      await getLotDeleteImpact(req, res, next);
+
+      expect(res.json).toHaveBeenCalledWith({
+        lotId: 'lot-1',
+        affectedAppointments: 5,
+        willCancelAppointments: true,
+      });
+    });
+  });
+
+  describe('getLotReduceImpact', () => {
+    it('devrait retourner 403 si utilisateur n\'est pas SUPERADMIN', async () => {
+      req.user.role = 'NATIONAL';
+      req.params.id = 'lot-1';
+      req.query.quantity = '10';
+      await getLotReduceImpact(req, res, next);
+      expect(res.status).toHaveBeenCalledWith(403);
+    });
+
+    it('devrait retourner l\'impact de réduction d\'un lot', async () => {
+      req.user.role = 'SUPERADMIN';
+      req.params.id = 'lot-1';
+      req.query.quantity = '10';
+      
+      prisma.stockLot.findUnique.mockResolvedValue({
+        id: 'lot-1',
+        ownerType: 'HEALTHCENTER',
+        ownerId: 'hc-1',
+        remainingQuantity: 100,
+      });
+      prisma.stockReservation.findMany.mockResolvedValue([
+        { scheduleId: 'schedule-1', schedule: { scheduledFor: new Date() } },
+      ]);
+
+      await getLotReduceImpact(req, res, next);
+
+      expect(res.json).toHaveBeenCalled();
     });
   });
 });

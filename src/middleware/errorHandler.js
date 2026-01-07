@@ -129,9 +129,18 @@ const errorHandler = (error, _req, res, _next) => {
           message = "Une erreur de base de données est survenue. Veuillez réessayer plus tard.";
         }
     }
-  } else if (status >= 500) {
-    // Pour les autres erreurs serveur, utiliser un message générique mais plus clair
-    message = "Une erreur est survenue lors du traitement de votre demande. Veuillez réessayer plus tard.";
+  } else {
+    // Gérer les erreurs JWT
+    if (error.name === "TokenExpiredError") {
+      status = 401;
+      message = "Token expiré";
+    } else if (error.name === "JsonWebTokenError") {
+      status = 401;
+      message = "Token invalide";
+    } else if (status >= 500) {
+      // Pour les autres erreurs serveur, utiliser un message générique mais plus clair
+      message = "Une erreur est survenue lors du traitement de votre demande. Veuillez réessayer plus tard.";
+    }
   }
 
   res.status(status).json({
@@ -143,4 +152,3 @@ const errorHandler = (error, _req, res, _next) => {
 };
 
 module.exports = errorHandler;
-

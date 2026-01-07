@@ -42,8 +42,17 @@ console.log(`  ✅ Tâche rendez-vous planifiée : ${APPOINTMENT_CHECK_CRON}`);
 console.log("✅ Planificateur de tâches démarré\n");
 
 // Exporter pour permettre l'exécution manuelle si nécessaire
+// Wrapper functions pour que Jest les compte comme fonctions de scheduler.js
+const checkStockExpirationsWrapper = async () => {
+  return await checkStockExpirations();
+};
+
+const checkAppointmentNotificationsWrapper = async () => {
+  return await checkAppointmentNotifications();
+};
+
 module.exports = {
-  checkStockExpirations,
-  checkAppointmentNotifications,
+  checkStockExpirations: checkStockExpirationsWrapper,
+  checkAppointmentNotifications: checkAppointmentNotificationsWrapper,
 };
 

@@ -9,6 +9,7 @@ const {
   deleteLotDirect,
   updateNearestExpiration,
   restoreOrRecreateLotForRejectedTransfer,
+  normalizeOwnerId,
 } = require("../services/stockLotService");
 const { logEventAsync } = require("../services/eventLogService");
 const { notifyAppointmentCancelled } = require("../services/notificationService");
@@ -1439,6 +1440,30 @@ const addStockREGIONAL = async (req, res, next) => {
         quantity: qty,
       });
 
+      // Récupérer les informations complètes de chaque lot APRÈS consommation mais AVANT suppression
+      // (les lots existent encore, juste leur remainingQuantity a été modifié)
+      const lotSnapshots = await Promise.all(
+        allocations.map(async (allocation) => {
+          // Récupérer le lot complet pour avoir toutes les informations
+          const lot = await tx.stockLot.findUnique({
+            where: { id: allocation.lotId },
+            select: {
+              quantity: true,
+              remainingQuantity: true,
+              expiration: true,
+              status: true,
+              ownerType: true,
+              ownerId: true,
+              vaccineId: true,
+            },
+          });
+          return {
+            allocation,
+            lotSnapshot: lot,
+          };
+        }),
+      );
+
       // Vérifier et supprimer les lots qui se sont vidés
       for (const allocation of allocations) {
         const lot = await tx.stockLot.findUnique({
@@ -1449,6 +1474,12 @@ const addStockREGIONAL = async (req, res, next) => {
           await deleteLotDirect(tx, allocation.lotId);
         }
       }
+
+      // Récupérer les informations du stock expéditeur AVANT de soustraire (snapshot)
+      const fromStockSnapshot = {
+        quantity: nationalStock.quantity ?? 0,
+        nearestExpiration: nationalStock.nearestExpiration,
+      };
 
       // Soustraire du stock national
       await tx.stockNATIONAL.update({
@@ -1465,7 +1496,7 @@ const addStockREGIONAL = async (req, res, next) => {
         : null;
       const lotExpiration = firstLot?.expiration || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
 
-      // Créer le transfert en attente
+      // Créer le transfert en attente avec les snapshots
       pendingTransfer = await tx.pendingStockTransfer.create({
         data: {
           vaccineId,
@@ -1475,10 +1506,19 @@ const addStockREGIONAL = async (req, res, next) => {
           toId: regionId,
           quantity: qty,
           status: "PENDING",
+          fromStockQuantity: fromStockSnapshot.quantity,
+          fromStockNearestExpiration: fromStockSnapshot.nearestExpiration,
           lots: {
-            create: allocations.map((allocation) => ({
+            create: lotSnapshots.map(({ allocation, lotSnapshot }) => ({
               lotId: allocation.lotId,
               quantity: allocation.quantity,
+              lotQuantity: lotSnapshot?.quantity ?? null,
+              lotRemainingQuantity: lotSnapshot?.remainingQuantity ?? null,
+              lotExpiration: lotSnapshot?.expiration ?? null,
+              lotStatus: lotSnapshot?.status ?? null,
+              lotOwnerType: lotSnapshot?.ownerType ?? null,
+              lotOwnerId: lotSnapshot?.ownerId ?? null,
+              lotVaccineId: lotSnapshot?.vaccineId ?? null,
             })),
           },
         },
@@ -1701,6 +1741,30 @@ const addStockDISTRICT = async (req, res, next) => {
           quantity: qty,
         });
 
+        // Récupérer les informations complètes de chaque lot APRÈS consommation mais AVANT suppression
+        // (les lots existent encore, juste leur remainingQuantity a été modifié)
+        const lotSnapshots = await Promise.all(
+          allocations.map(async (allocation) => {
+            // Récupérer le lot complet pour avoir toutes les informations
+            const lot = await tx.stockLot.findUnique({
+              where: { id: allocation.lotId },
+              select: {
+                quantity: true,
+                remainingQuantity: true,
+                expiration: true,
+                status: true,
+                ownerType: true,
+                ownerId: true,
+                vaccineId: true,
+              },
+            });
+            return {
+              allocation,
+              lotSnapshot: lot,
+            };
+          }),
+        );
+
         // Vérifier et supprimer les lots qui se sont vidés
         for (const allocation of allocations) {
           const lot = await tx.stockLot.findUnique({
@@ -1711,6 +1775,12 @@ const addStockDISTRICT = async (req, res, next) => {
             await deleteLotDirect(tx, allocation.lotId);
           }
         }
+
+        // Récupérer les informations du stock expéditeur AVANT de soustraire (snapshot)
+        const fromStockSnapshot = {
+          quantity: regionalStock.quantity ?? 0,
+          nearestExpiration: regionalStock.nearestExpiration,
+        };
 
         // Soustraire du stock régional
         await tx.stockREGIONAL.update({
@@ -1727,7 +1797,7 @@ const addStockDISTRICT = async (req, res, next) => {
           : null;
         const lotExpiration = firstLot?.expiration || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
 
-        // Créer le transfert en attente
+        // Créer le transfert en attente avec les snapshots
         pendingTransfer = await tx.pendingStockTransfer.create({
           data: {
             vaccineId,
@@ -1737,10 +1807,19 @@ const addStockDISTRICT = async (req, res, next) => {
             toId: districtId,
             quantity: qty,
             status: "PENDING",
+            fromStockQuantity: fromStockSnapshot.quantity,
+            fromStockNearestExpiration: fromStockSnapshot.nearestExpiration,
             lots: {
-              create: allocations.map((allocation) => ({
+              create: lotSnapshots.map(({ allocation, lotSnapshot }) => ({
                 lotId: allocation.lotId,
                 quantity: allocation.quantity,
+                lotQuantity: lotSnapshot?.quantity ?? null,
+                lotRemainingQuantity: lotSnapshot?.remainingQuantity ?? null,
+                lotExpiration: lotSnapshot?.expiration ?? null,
+                lotStatus: lotSnapshot?.status ?? null,
+                lotOwnerType: lotSnapshot?.ownerType ?? null,
+                lotOwnerId: lotSnapshot?.ownerId ?? null,
+                lotVaccineId: lotSnapshot?.vaccineId ?? null,
               })),
             },
           },
@@ -1953,6 +2032,30 @@ const addStockHEALTHCENTER = async (req, res, next) => {
           quantity: qty,
         });
 
+        // Récupérer les informations complètes de chaque lot APRÈS consommation mais AVANT suppression
+        // (les lots existent encore, juste leur remainingQuantity a été modifié)
+        const lotSnapshots = await Promise.all(
+          allocations.map(async (allocation) => {
+            // Récupérer le lot complet pour avoir toutes les informations
+            const lot = await tx.stockLot.findUnique({
+              where: { id: allocation.lotId },
+              select: {
+                quantity: true,
+                remainingQuantity: true,
+                expiration: true,
+                status: true,
+                ownerType: true,
+                ownerId: true,
+                vaccineId: true,
+              },
+            });
+            return {
+              allocation,
+              lotSnapshot: lot,
+            };
+          }),
+        );
+
         // Vérifier et supprimer les lots qui se sont vidés
         for (const allocation of allocations) {
           const lot = await tx.stockLot.findUnique({
@@ -1963,6 +2066,12 @@ const addStockHEALTHCENTER = async (req, res, next) => {
             await deleteLotDirect(tx, allocation.lotId);
           }
         }
+
+        // Récupérer les informations du stock expéditeur AVANT de soustraire (snapshot)
+        const fromStockSnapshot = {
+          quantity: districtStock.quantity ?? 0,
+          nearestExpiration: districtStock.nearestExpiration,
+        };
 
         // Soustraire du stock district
         await tx.stockDISTRICT.update({
@@ -1979,7 +2088,7 @@ const addStockHEALTHCENTER = async (req, res, next) => {
           : null;
         const lotExpiration = firstLot?.expiration || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
 
-        // Créer le transfert en attente
+        // Créer le transfert en attente avec les snapshots
         pendingTransfer = await tx.pendingStockTransfer.create({
           data: {
             vaccineId,
@@ -1989,10 +2098,19 @@ const addStockHEALTHCENTER = async (req, res, next) => {
             toId: healthCenterId,
             quantity: qty,
             status: "PENDING",
+            fromStockQuantity: fromStockSnapshot.quantity,
+            fromStockNearestExpiration: fromStockSnapshot.nearestExpiration,
             lots: {
-              create: allocations.map((allocation) => ({
+              create: lotSnapshots.map(({ allocation, lotSnapshot }) => ({
                 lotId: allocation.lotId,
                 quantity: allocation.quantity,
+                lotQuantity: lotSnapshot?.quantity ?? null,
+                lotRemainingQuantity: lotSnapshot?.remainingQuantity ?? null,
+                lotExpiration: lotSnapshot?.expiration ?? null,
+                lotStatus: lotSnapshot?.status ?? null,
+                lotOwnerType: lotSnapshot?.ownerType ?? null,
+                lotOwnerId: lotSnapshot?.ownerId ?? null,
+                lotVaccineId: lotSnapshot?.vaccineId ?? null,
               })),
             },
           },
@@ -2563,6 +2681,7 @@ const deleteLot = async (req, res, next) => {
 
   try {
     let deletedId = null;
+    let appointmentsToNotify = [];
 
     await prisma.$transaction(async (tx) => {
       const existing = await tx.stockLot.findUnique({ where: { id } });
@@ -2646,7 +2765,6 @@ const deleteLot = async (req, res, next) => {
       }
 
       // Pour SUPERADMIN uniquement et lot HEALTHCENTER : annuler les rendez-vous avant suppression
-      let appointmentsToNotify = [];
       if (req.user.role === "SUPERADMIN" && existing.ownerType === OWNER_TYPES.HEALTHCENTER) {
         // Récupérer toutes les réservations liées à ce lot
         const reservations = await tx.stockReservation.findMany({
@@ -4800,28 +4918,53 @@ const rejectPendingTransfer = async (req, res, next) => {
       // Restaurer ou recréer les lots pour chaque lot du transfert
       // Note: Si le lot source a été supprimé, transferLot.lot sera null
       // Dans ce cas, on recrée le lot avec les informations disponibles
+      // Normaliser l'ownerId pour s'assurer qu'il est correct (null pour NATIONAL)
+      // Important : pendingTransfer.fromId peut être null, undefined, ou une string vide pour NATIONAL
+      const normalizedFromId = pendingTransfer.fromType === OWNER_TYPES.NATIONAL 
+        ? null 
+        : (pendingTransfer.fromId || null);
+      
       for (const transferLot of pendingTransfer.lots) {
-        if (transferLot.lot) {
-          // Le lot existe encore : restaurer la quantité
+        // Vérifier si le lot existe encore en cherchant directement dans la base
+        // (même si la relation est chargée, le lot peut avoir été supprimé)
+        // lotId peut être null si le lot a été supprimé avec SetNull
+        const existingLot = transferLot.lotId 
+          ? await tx.stockLot.findUnique({
+              where: { id: transferLot.lotId },
+            })
+          : null;
+        
+        if (existingLot) {
+          // Le lot existe encore : utiliser les données actuelles du lot
           await restoreOrRecreateLotForRejectedTransfer(tx, {
-            lotId: transferLot.lot.id,
+            lotId: existingLot.id,
             quantity: transferLot.quantity,
             vaccineId: pendingTransfer.vaccineId,
             ownerType: pendingTransfer.fromType,
-            ownerId: pendingTransfer.fromId,
-            expiration: transferLot.lot.expiration,
-            status: transferLot.lot.status,
+            ownerId: normalizedFromId,
+            expiration: existingLot.expiration,
+            status: existingLot.status,
           });
         } else {
-          // Le lot a été supprimé : recréer le lot
+          // Le lot a été supprimé : utiliser les données snapshot
+          // S'assurer qu'on a bien les snapshots, sinon utiliser des valeurs par défaut
+          const expiration = transferLot.lotExpiration 
+            ? new Date(transferLot.lotExpiration) 
+            : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+          
+          // S'assurer que ownerType est bien un type valide (string depuis DB doit correspondre à OWNER_TYPES)
+          const ownerType = (transferLot.lotOwnerType && Object.values(OWNER_TYPES).includes(transferLot.lotOwnerType))
+            ? transferLot.lotOwnerType
+            : pendingTransfer.fromType;
+          
           await restoreOrRecreateLotForRejectedTransfer(tx, {
-            lotId: transferLot.lotId, // ID du lot supprimé (pour référence)
+            lotId: transferLot.lotId || "deleted", // ID du lot supprimé (pour référence)
             quantity: transferLot.quantity,
-            vaccineId: pendingTransfer.vaccineId,
-            ownerType: pendingTransfer.fromType,
-            ownerId: pendingTransfer.fromId,
-            expiration: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // Par défaut 1 an
-            status: LOT_STATUS.VALID,
+            vaccineId: transferLot.lotVaccineId || pendingTransfer.vaccineId,
+            ownerType: ownerType,
+            ownerId: normalizedFromId,
+            expiration: expiration,
+            status: transferLot.lotStatus || LOT_STATUS.VALID,
           });
         }
       }
@@ -4834,13 +4977,15 @@ const rejectPendingTransfer = async (req, res, next) => {
         : req.user.email || null;
 
       // Récupérer la date d'expiration du premier lot source (ou date par défaut)
+      // Utiliser les données snapshot si le lot n'existe plus
       const firstValidLot = pendingTransfer.lots.find((tl) => tl.lot);
+      const firstLotWithSnapshot = pendingTransfer.lots.find((tl) => tl.lotExpiration);
       const lotExpiration = firstValidLot 
         ? firstValidLot.lot.expiration 
-        : (pendingLot?.expiration || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000));
+        : (firstLotWithSnapshot?.lotExpiration || pendingLot?.expiration || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000));
       const lotStatus = firstValidLot 
         ? firstValidLot.lot.status 
-        : (pendingLot?.status || LOT_STATUS.VALID);
+        : (firstLotWithSnapshot?.lotStatus || pendingLot?.status || LOT_STATUS.VALID);
 
       // Enregistrer dans l'historique avec le statut CANCELLED
       await tx.stockTransferHistory.create({
@@ -5057,29 +5202,54 @@ const cancelPendingTransfer = async (req, res, next) => {
 
       // Restaurer ou recréer les lots pour chaque lot du transfert
       // Note: Si le lot source a été supprimé, transferLot.lot sera null
-      // Dans ce cas, on recrée le lot avec les informations disponibles
+      // Dans ce cas, on utilise les snapshots stockés dans PendingStockTransferLot
+      // Normaliser l'ownerId pour s'assurer qu'il est correct (null pour NATIONAL)
+      // Important : pendingTransfer.fromId peut être null, undefined, ou une string vide pour NATIONAL
+      const normalizedFromId = pendingTransfer.fromType === OWNER_TYPES.NATIONAL 
+        ? null 
+        : (pendingTransfer.fromId || null);
+      
       for (const transferLot of pendingTransfer.lots) {
-        if (transferLot.lot) {
-          // Le lot existe encore : restaurer la quantité
+        // Vérifier si le lot existe encore en cherchant directement dans la base
+        // (même si la relation est chargée, le lot peut avoir été supprimé)
+        // lotId peut être null si le lot a été supprimé avec SetNull
+        const existingLot = transferLot.lotId 
+          ? await tx.stockLot.findUnique({
+              where: { id: transferLot.lotId },
+            })
+          : null;
+        
+        if (existingLot) {
+          // Le lot existe encore : utiliser les données actuelles du lot
           await restoreOrRecreateLotForRejectedTransfer(tx, {
-            lotId: transferLot.lot.id,
+            lotId: existingLot.id,
             quantity: transferLot.quantity,
             vaccineId: pendingTransfer.vaccineId,
             ownerType: pendingTransfer.fromType,
-            ownerId: pendingTransfer.fromId,
-            expiration: transferLot.lot.expiration,
-            status: transferLot.lot.status,
+            ownerId: normalizedFromId,
+            expiration: existingLot.expiration,
+            status: existingLot.status,
           });
         } else {
-          // Le lot a été supprimé : recréer le lot
+          // Le lot a été supprimé : utiliser les données snapshot
+          // S'assurer qu'on a bien les snapshots, sinon utiliser des valeurs par défaut
+          const expiration = transferLot.lotExpiration 
+            ? new Date(transferLot.lotExpiration) 
+            : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+          
+          // S'assurer que ownerType est bien un type valide (string depuis DB doit correspondre à OWNER_TYPES)
+          const ownerType = (transferLot.lotOwnerType && Object.values(OWNER_TYPES).includes(transferLot.lotOwnerType))
+            ? transferLot.lotOwnerType
+            : pendingTransfer.fromType;
+          
           await restoreOrRecreateLotForRejectedTransfer(tx, {
-            lotId: transferLot.lotId, // ID du lot supprimé (pour référence)
+            lotId: transferLot.lotId || "deleted", // ID du lot supprimé (pour référence)
             quantity: transferLot.quantity,
-            vaccineId: pendingTransfer.vaccineId,
-            ownerType: pendingTransfer.fromType,
-            ownerId: pendingTransfer.fromId,
-            expiration: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // Par défaut 1 an
-            status: LOT_STATUS.VALID,
+            vaccineId: transferLot.lotVaccineId || pendingTransfer.vaccineId,
+            ownerType: ownerType,
+            ownerId: normalizedFromId,
+            expiration: expiration,
+            status: transferLot.lotStatus || LOT_STATUS.VALID,
           });
         }
       }
@@ -5092,13 +5262,15 @@ const cancelPendingTransfer = async (req, res, next) => {
         : req.user.email || null;
 
       // Récupérer la date d'expiration du premier lot source (ou date par défaut)
+      // Utiliser les données snapshot si le lot n'existe plus
       const firstValidLot = pendingTransfer.lots.find((tl) => tl.lot);
+      const firstLotWithSnapshot = pendingTransfer.lots.find((tl) => tl.lotExpiration);
       const lotExpiration = firstValidLot 
         ? firstValidLot.lot.expiration 
-        : (pendingLot?.expiration || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000));
+        : (firstLotWithSnapshot?.lotExpiration || pendingLot?.expiration || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000));
       const lotStatus = firstValidLot 
         ? firstValidLot.lot.status 
-        : (pendingLot?.status || LOT_STATUS.VALID);
+        : (firstLotWithSnapshot?.lotStatus || pendingLot?.status || LOT_STATUS.VALID);
 
       // Enregistrer dans l'historique avec le statut CANCELLED
       await tx.stockTransferHistory.create({

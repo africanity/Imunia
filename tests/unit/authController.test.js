@@ -1,23 +1,32 @@
 // tests/unit/authController.test.js
 
-const { login, logout, refreshToken } = require('../../src/controllers/authController');
+const { login, logout, refreshToken, requestPasswordReset, verifyPasswordResetCode, resendPasswordResetCode, updatePasswordAfterReset } = require('../../src/controllers/authController');
 const prisma = require('../../src/config/prismaClient');
 const tokenService = require('../../src/services/tokenService');
 const bcrypt = require('bcryptjs');
+const emailService = require('../../src/services/emailService');
 
 // Mock des dépendances
 jest.mock('../../src/config/prismaClient', () => ({
   user: {
     findUnique: jest.fn(),
     findMany: jest.fn(),
+    update: jest.fn(),
   },
 }));
 jest.mock('../../src/services/tokenService', () => ({
   signAccessToken: jest.fn(),
   signRefreshToken: jest.fn(),
+  verifyRefreshToken: jest.fn(),
+  generatePasswordResetToken: jest.fn(),
+  verifyPasswordResetToken: jest.fn(),
 }));
 jest.mock('bcryptjs', () => ({
   compare: jest.fn(),
+  hash: jest.fn(),
+}));
+jest.mock('../../src/services/emailService', () => ({
+  sendPasswordResetCode: jest.fn(),
 }));
 jest.mock('../../src/controllers/vaccineController', () => ({
   missVaccine: {
@@ -30,6 +39,9 @@ jest.mock('../../src/services/stockLotService', () => ({
 }));
 jest.mock('../../src/services/vaccineBucketService', () => ({
   rebuildAllVaccinationBuckets: jest.fn().mockResolvedValue(undefined),
+}));
+jest.mock('../../src/services/eventLogService', () => ({
+  logEventAsync: jest.fn(),
 }));
 
 describe('authController', () => {
@@ -361,6 +373,508 @@ describe('authController', () => {
 
       expect(res.status).toHaveBeenCalledWith(204);
       expect(res.send).toHaveBeenCalled();
+    });
+  });
+
+  describe('refreshToken()', () => {
+    it('devrait retourner 400 si refreshToken manquant', async () => {
+      req.body = {};
+
+      await refreshToken(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Refresh token requis'
+      });
+    });
+
+    it('devrait retourner 401 si refreshToken invalide', async () => {
+      req.body = { refreshToken: 'invalid-token' };
+      tokenService.verifyRefreshToken.mockImplementation(() => {
+        throw new Error('Invalid token');
+      });
+
+      await refreshToken(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Refresh token invalide ou expiré'
+      });
+    });
+
+    it('devrait retourner 401 si utilisateur non trouvé', async () => {
+      req.body = { refreshToken: 'valid-token' };
+      tokenService.verifyRefreshToken.mockReturnValue({ sub: 'user-123' });
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      await refreshToken(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Utilisateur non trouvé ou inactif'
+      });
+    });
+
+    it('devrait retourner 401 si utilisateur inactif', async () => {
+      req.body = { refreshToken: 'valid-token' };
+      tokenService.verifyRefreshToken.mockReturnValue({ sub: 'user-123' });
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'user-123',
+        role: 'AGENT',
+        agentLevel: 'ADMIN',
+        isActive: false,
+      });
+
+      await refreshToken(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Utilisateur non trouvé ou inactif'
+      });
+    });
+
+    it('devrait retourner de nouveaux tokens si refreshToken valide', async () => {
+      req.body = { refreshToken: 'valid-token' };
+      tokenService.verifyRefreshToken.mockReturnValue({ sub: 'user-123' });
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'user-123',
+        role: 'AGENT',
+        agentLevel: 'ADMIN',
+        isActive: true,
+      });
+      tokenService.signAccessToken.mockReturnValue('new-access-token');
+      tokenService.signRefreshToken.mockReturnValue('new-refresh-token');
+
+      await refreshToken(req, res, next);
+
+      expect(tokenService.signAccessToken).toHaveBeenCalledWith({
+        sub: 'user-123',
+        role: 'AGENT',
+        agentLevel: 'ADMIN',
+      });
+      expect(res.json).toHaveBeenCalledWith({
+        accessToken: 'new-access-token',
+        refreshToken: 'new-refresh-token',
+      });
+    });
+
+    it('devrait appeler next en cas d\'erreur', async () => {
+      req.body = { refreshToken: 'valid-token' };
+      tokenService.verifyRefreshToken.mockReturnValue({ sub: 'user-123' });
+      prisma.user.findUnique.mockRejectedValue(new Error('DB Error'));
+
+      await refreshToken(req, res, next);
+
+      expect(next).toHaveBeenCalledWith(expect.any(Error));
+    });
+  });
+
+  describe('requestPasswordReset()', () => {
+    it('devrait retourner 400 si email manquant', async () => {
+      req.body = {};
+
+      await requestPasswordReset(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Email requis.'
+      });
+    });
+
+    it('devrait retourner message générique si utilisateur non trouvé', async () => {
+      req.body = { email: 'inexistant@example.com' };
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      await requestPasswordReset(req, res, next);
+
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Si cet email existe, un code de réinitialisation a été envoyé.'
+      });
+    });
+
+    it('devrait retourner message générique si utilisateur inactif', async () => {
+      req.body = { email: 'inactive@example.com' };
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'user-123',
+        email: 'inactive@example.com',
+        firstName: 'John',
+        isActive: false,
+      });
+
+      await requestPasswordReset(req, res, next);
+
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Si cet email existe, un code de réinitialisation a été envoyé.'
+      });
+    });
+
+    it('devrait envoyer un code de réinitialisation si utilisateur valide', async () => {
+      req.body = { email: 'test@example.com' };
+      const mockUser = {
+        id: 'user-123',
+        email: 'test@example.com',
+        firstName: 'John',
+        isActive: true,
+      };
+      prisma.user.findUnique.mockResolvedValue(mockUser);
+      prisma.user.update.mockResolvedValue(mockUser);
+      emailService.sendPasswordResetCode.mockResolvedValue({ success: true });
+
+      await requestPasswordReset(req, res, next);
+
+      expect(prisma.user.update).toHaveBeenCalled();
+      expect(emailService.sendPasswordResetCode).toHaveBeenCalled();
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Si cet email existe, un code de réinitialisation a été envoyé.',
+        email: 'test@example.com',
+      });
+    });
+
+    it('devrait gérer les erreurs d\'envoi d\'email', async () => {
+      req.body = { email: 'test@example.com' };
+      const mockUser = {
+        id: 'user-123',
+        email: 'test@example.com',
+        firstName: 'John',
+        isActive: true,
+      };
+      prisma.user.findUnique.mockResolvedValue(mockUser);
+      prisma.user.update.mockResolvedValue(mockUser);
+      emailService.sendPasswordResetCode.mockRejectedValue(new Error('Email error'));
+      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
+
+      await requestPasswordReset(req, res, next);
+
+      expect(consoleErrorSpy).toHaveBeenCalled();
+      expect(res.json).toHaveBeenCalled();
+      consoleErrorSpy.mockRestore();
+    });
+
+    it('devrait appeler next en cas d\'erreur', async () => {
+      req.body = { email: 'test@example.com' };
+      prisma.user.findUnique.mockRejectedValue(new Error('DB Error'));
+
+      await requestPasswordReset(req, res, next);
+
+      expect(next).toHaveBeenCalledWith(expect.any(Error));
+    });
+  });
+
+  describe('verifyPasswordResetCode()', () => {
+    it('devrait retourner 400 si email manquant', async () => {
+      req.body = { code: '123456' };
+
+      await verifyPasswordResetCode(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Email et code requis.'
+      });
+    });
+
+    it('devrait retourner 400 si code manquant', async () => {
+      req.body = { email: 'test@example.com' };
+
+      await verifyPasswordResetCode(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Email et code requis.'
+      });
+    });
+
+    it('devrait retourner 404 si utilisateur non trouvé', async () => {
+      req.body = { email: 'test@example.com', code: '123456' };
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      await verifyPasswordResetCode(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Email introuvable.'
+      });
+    });
+
+    it('devrait retourner 400 si code incorrect', async () => {
+      req.body = { email: 'test@example.com', code: '123456' };
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'user-123',
+        code: '654321',
+        passwordResetCodeExpiry: new Date(Date.now() + 60000),
+        passwordResetAttempts: 0,
+      });
+      prisma.user.update.mockResolvedValue({});
+
+      await verifyPasswordResetCode(req, res, next);
+
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'user-123' },
+        data: { passwordResetAttempts: 1 },
+      });
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: expect.stringContaining('Code incorrect'),
+          remainingAttempts: expect.any(Number),
+        })
+      );
+    });
+
+    it('devrait retourner 400 si code expiré', async () => {
+      req.body = { email: 'test@example.com', code: '123456' };
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'user-123',
+        code: '123456',
+        passwordResetCodeExpiry: new Date(Date.now() - 60000),
+        passwordResetAttempts: 0,
+      });
+
+      await verifyPasswordResetCode(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Le code a expiré. Veuillez demander un nouveau code.',
+        expired: true,
+      });
+    });
+
+    it('devrait retourner 400 si trop de tentatives', async () => {
+      req.body = { email: 'test@example.com', code: '123456' };
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'user-123',
+        code: '123456',
+        passwordResetCodeExpiry: new Date(Date.now() + 60000),
+        passwordResetAttempts: 3,
+      });
+
+      await verifyPasswordResetCode(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Nombre maximum de tentatives atteint. Veuillez demander un nouveau code.',
+        maxAttemptsReached: true,
+      });
+    });
+
+    it('devrait retourner success si code valide', async () => {
+      req.body = { email: 'test@example.com', code: '123456' };
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'user-123',
+        code: '123456',
+        passwordResetCodeExpiry: new Date(Date.now() + 60000),
+        passwordResetAttempts: 0,
+      });
+      tokenService.generatePasswordResetToken.mockReturnValue('reset-token');
+
+      await verifyPasswordResetCode(req, res, next);
+
+      expect(tokenService.generatePasswordResetToken).toHaveBeenCalledWith('user-123');
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Code vérifié avec succès.',
+        resetToken: 'reset-token',
+      });
+    });
+
+    it('devrait appeler next en cas d\'erreur', async () => {
+      req.body = { email: 'test@example.com', code: '123456' };
+      prisma.user.findUnique.mockRejectedValue(new Error('DB Error'));
+
+      await verifyPasswordResetCode(req, res, next);
+
+      expect(next).toHaveBeenCalledWith(expect.any(Error));
+    });
+  });
+
+  describe('resendPasswordResetCode()', () => {
+    it('devrait retourner 400 si email manquant', async () => {
+      req.body = {};
+
+      await resendPasswordResetCode(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Email requis.'
+      });
+    });
+
+    it('devrait retourner message générique si utilisateur non trouvé', async () => {
+      req.body = { email: 'inexistant@example.com' };
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      await resendPasswordResetCode(req, res, next);
+
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Si cet email existe, un nouveau code a été envoyé.'
+      });
+    });
+
+    it('devrait renvoyer un code si utilisateur valide', async () => {
+      req.body = { email: 'test@example.com' };
+      const mockUser = {
+        id: 'user-123',
+        email: 'test@example.com',
+        firstName: 'John',
+        isActive: true,
+      };
+      prisma.user.findUnique.mockResolvedValue(mockUser);
+      prisma.user.update.mockResolvedValue(mockUser);
+      emailService.sendPasswordResetCode.mockResolvedValue({ success: true });
+
+      await resendPasswordResetCode(req, res, next);
+
+      expect(prisma.user.update).toHaveBeenCalled();
+      expect(emailService.sendPasswordResetCode).toHaveBeenCalled();
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Si cet email existe, un nouveau code a été envoyé.',
+      });
+    });
+
+    it('devrait appeler next en cas d\'erreur', async () => {
+      req.body = { email: 'test@example.com' };
+      prisma.user.findUnique.mockRejectedValue(new Error('DB Error'));
+
+      await resendPasswordResetCode(req, res, next);
+
+      expect(next).toHaveBeenCalledWith(expect.any(Error));
+    });
+  });
+
+  describe('updatePasswordAfterReset()', () => {
+    it('devrait retourner 400 si resetToken manquant', async () => {
+      req.body = { password: 'newpassword123', confirmPassword: 'newpassword123' };
+
+      await updatePasswordAfterReset(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Token, mot de passe et confirmation requis.'
+      });
+    });
+
+    it('devrait retourner 400 si password manquant', async () => {
+      req.body = { resetToken: 'token', confirmPassword: 'newpassword123' };
+
+      await updatePasswordAfterReset(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Token, mot de passe et confirmation requis.'
+      });
+    });
+
+    it('devrait retourner 400 si confirmPassword manquant', async () => {
+      req.body = { resetToken: 'token', password: 'newpassword123' };
+
+      await updatePasswordAfterReset(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Token, mot de passe et confirmation requis.'
+      });
+    });
+
+    it('devrait retourner 400 si mots de passe ne correspondent pas', async () => {
+      req.body = { resetToken: 'token', password: 'newpassword123', confirmPassword: 'different' };
+
+      await updatePasswordAfterReset(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Les mots de passe ne correspondent pas.'
+      });
+    });
+
+    it('devrait retourner 400 si mot de passe trop court', async () => {
+      req.body = { resetToken: 'token', password: '12345', confirmPassword: '12345' };
+
+      await updatePasswordAfterReset(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Le mot de passe doit contenir au moins 6 caractères.'
+      });
+    });
+
+    it('devrait retourner 400 si resetToken invalide', async () => {
+      req.body = { resetToken: 'invalid-token', password: 'newpassword123', confirmPassword: 'newpassword123' };
+      tokenService.verifyPasswordResetToken.mockImplementation(() => {
+        throw new Error('Invalid token');
+      });
+
+      await updatePasswordAfterReset(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Token invalide ou expiré.'
+      });
+    });
+
+    it('devrait retourner 404 si utilisateur non trouvé', async () => {
+      req.body = { resetToken: 'valid-token', password: 'newpassword123', confirmPassword: 'newpassword123' };
+      tokenService.verifyPasswordResetToken.mockReturnValue({ userId: 'user-123' });
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      await updatePasswordAfterReset(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Utilisateur introuvable.'
+      });
+    });
+
+    it('devrait retourner 400 si code expiré', async () => {
+      req.body = { resetToken: 'valid-token', password: 'newpassword123', confirmPassword: 'newpassword123' };
+      tokenService.verifyPasswordResetToken.mockReturnValue({ userId: 'user-123' });
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'user-123',
+        passwordResetCodeExpiry: new Date(Date.now() - 60000),
+        code: '123456',
+      });
+
+      await updatePasswordAfterReset(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Le code a expiré. Veuillez recommencer le processus.'
+      });
+    });
+
+    it('devrait mettre à jour le mot de passe si token valide', async () => {
+      req.body = { resetToken: 'valid-token', password: 'newpassword123', confirmPassword: 'newpassword123' };
+      tokenService.verifyPasswordResetToken.mockReturnValue({ userId: 'user-123' });
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'user-123',
+        passwordResetCodeExpiry: new Date(Date.now() + 60000),
+        code: '123456',
+      });
+      bcrypt.hash.mockResolvedValue('hashed-password');
+      prisma.user.update.mockResolvedValue({});
+
+      await updatePasswordAfterReset(req, res, next);
+
+      expect(bcrypt.hash).toHaveBeenCalledWith('newpassword123', 10);
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'user-123' },
+        data: {
+          password: 'hashed-password',
+          code: null,
+          passwordResetCodeExpiry: null,
+          passwordResetAttempts: 0,
+        },
+      });
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Mot de passe mis à jour avec succès.',
+      });
+    });
+
+    it('devrait appeler next en cas d\'erreur', async () => {
+      req.body = { resetToken: 'token', password: 'newpassword123', confirmPassword: 'newpassword123' };
+      tokenService.verifyPasswordResetToken.mockReturnValue({ userId: 'user-123' });
+      prisma.user.findUnique.mockRejectedValue(new Error('DB Error'));
+
+      await updatePasswordAfterReset(req, res, next);
+
+      expect(next).toHaveBeenCalledWith(expect.any(Error));
     });
   });
 });

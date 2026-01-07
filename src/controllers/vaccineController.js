@@ -1465,7 +1465,26 @@ const deleteVaccine = async (req, res, next) => {
         where: { vaccineId },
       });
 
-      // 7. Supprimer les transferts de stock (StockTransfer et StockTransferLot)
+      // 7. Supprimer les transferts en attente (PendingStockTransfer et PendingStockTransferLot)
+      const pendingTransfers = await tx.pendingStockTransfer.findMany({
+        where: { vaccineId },
+        select: { id: true },
+      });
+
+      const pendingTransferIds = pendingTransfers.map((pt) => pt.id);
+      if (pendingTransferIds.length > 0) {
+        // Supprimer d'abord les PendingStockTransferLot (ils ont une FK vers PendingStockTransfer)
+        await tx.pendingStockTransferLot.deleteMany({
+          where: { pendingTransferId: { in: pendingTransferIds } },
+        });
+
+        // Puis supprimer les PendingStockTransfer
+        await tx.pendingStockTransfer.deleteMany({
+          where: { id: { in: pendingTransferIds } },
+        });
+      }
+
+      // 8. Supprimer les transferts de stock confirmés (StockTransfer et StockTransferLot)
       // Note: StockTransfer a une contrainte ON DELETE RESTRICT sur vaccineId
       const stockTransfers = await tx.stockTransfer.findMany({
         where: { vaccineId },
@@ -1485,16 +1504,16 @@ const deleteVaccine = async (req, res, next) => {
         });
       }
 
-      // 8. Mettre à jour les enfants qui ont ce vaccin comme nextVaccineId
+      // 9. Mettre à jour les enfants qui ont ce vaccin comme nextVaccineId
       await tx.children.updateMany({
         where: { nextVaccineId: vaccineId },
         data: { nextVaccineId: null },
       });
 
-      // 9. Supprimer la relation many-to-many avec VaccineCalendar
+      // 10. Supprimer la relation many-to-many avec VaccineCalendar
       // (Prisma gère automatiquement la table de jointure _VaccineToVaccineCalendar)
 
-      // 10. Supprimer le vaccin lui-même
+      // 11. Supprimer le vaccin lui-même
       await tx.vaccine.delete({
         where: { id: vaccineId },
       });
