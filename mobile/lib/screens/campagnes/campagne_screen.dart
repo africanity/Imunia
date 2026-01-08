@@ -22,7 +22,7 @@ class _CampagneScreenState extends State<CampagneScreen> with SingleTickerProvid
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     _loadCampaigns();
   }
 
@@ -527,7 +527,6 @@ class _CampagneScreenState extends State<CampagneScreen> with SingleTickerProvid
             Tab(text: 'Toutes'),
             Tab(text: 'En cours'),
             Tab(text: 'À venir'),
-            Tab(text: 'Terminées'),
           ],
         ),
       ),
@@ -570,7 +569,6 @@ class _CampagneScreenState extends State<CampagneScreen> with SingleTickerProvid
                     _buildTabContent('all'),
                     _buildTabContent('ongoing'),
                     _buildTabContent('upcoming'),
-                    _buildTabContent('completed'),
                   ],
                 ),
     );

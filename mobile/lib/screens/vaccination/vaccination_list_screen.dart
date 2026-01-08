@@ -336,12 +336,19 @@ class _VaccinationListScreenState extends State<VaccinationListScreen> with Sing
     );
     
     // Vérifier s'il existe déjà une demande ou un rendez-vous programmé pour cette dose spécifique
+    // Utiliser les champs du backend si disponibles, sinon vérifier dans scheduledVaccines
+    final hasRequestedFromBackend = vaccine["hasRequested"] as bool? ?? false;
+    final isScheduledFromBackend = vaccine["isScheduled"] as bool? ?? false;
     final scheduledVaccines = _dashboardData?["vaccinations"]?["scheduled"] as List<dynamic>? ?? [];
-    final hasExistingRequestOrScheduled = _hasExistingRequestOrScheduled(
+    final hasScheduledFallback = _hasExistingRequestOrScheduled(
       vaccine["vaccineId"] as String?,
       currentDose,
       scheduledVaccines,
     );
+    
+    final hasRequested = hasRequestedFromBackend;
+    final isScheduled = isScheduledFromBackend || hasScheduledFallback;
+    final hasExistingRequestOrScheduled = hasRequested || isScheduled;
     
     final canRequest = previousDosesOk && !hasExistingRequestOrScheduled;
 
@@ -432,9 +439,11 @@ class _VaccinationListScreenState extends State<VaccinationListScreen> with Sing
               label: Text(
                 !previousDosesOk
                     ? "Complétez d'abord les doses précédentes"
-                    : hasExistingRequestOrScheduled
+                    : isScheduled
                         ? "Déjà programmé"
-                        : (isOverdue ? "Demander une nouvelle date" : "Demander un rendez-vous"),
+                        : hasRequested
+                            ? "Demande déjà envoyée"
+                            : (isOverdue ? "Demander une nouvelle date" : "Demander un rendez-vous"),
                 style: GoogleFonts.poppins(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,

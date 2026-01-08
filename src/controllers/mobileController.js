@@ -1451,6 +1451,62 @@ const getChildDashboard = async (req, res, next) => {
 
     // L'accès est déjà vérifié par le middleware requireMobileAuth
 
+    // Récupérer les demandes de rendez-vous en attente
+    const pendingRequests = await prisma.vaccineRequest.findMany({
+      where: {
+        childId: childId,
+        status: "PENDING",
+      },
+      select: {
+        vaccineId: true,
+        dose: true,
+      },
+    });
+
+    // Créer des Maps pour vérifier rapidement si une demande ou un rendez-vous existe
+    const requestMap = new Map();
+    pendingRequests.forEach((request) => {
+      const key = `${request.vaccineId}_${request.dose ?? 1}`;
+      requestMap.set(key, true);
+    });
+
+    const scheduledMap = new Map();
+    child.scheduledVaccines.forEach((item) => {
+      const key = `${item.vaccineId}_${item.dose ?? 1}`;
+      scheduledMap.set(key, true);
+    });
+
+    // Fonctions helper pour vérifier l'état de la demande
+    const hasRequested = (vaccineId, dose) => {
+      const key = `${vaccineId}_${dose ?? 1}`;
+      return requestMap.has(key);
+    };
+
+    const isScheduled = (vaccineId, dose) => {
+      const key = `${vaccineId}_${dose ?? 1}`;
+      return scheduledMap.has(key);
+    };
+
+    // Filtrer les vaccins "due" pour ne garder que la plus petite dose par vaccin
+    const dueByVaccine = new Map();
+    child.dueVaccines.forEach((entry) => {
+      const key = entry.vaccineId;
+      const currentDose = entry.dose ?? 1;
+      if (!dueByVaccine.has(key) || currentDose < (dueByVaccine.get(key).dose ?? 1)) {
+        dueByVaccine.set(key, entry);
+      }
+    });
+
+    // Filtrer les vaccins "late" pour ne garder que la plus petite dose par vaccin
+    const lateByVaccine = new Map();
+    child.lateVaccines.forEach((entry) => {
+      const key = entry.vaccineId;
+      const currentDose = entry.dose ?? 1;
+      if (!lateByVaccine.has(key) || currentDose < (lateByVaccine.get(key).dose ?? 1)) {
+        lateByVaccine.set(key, entry);
+      }
+    });
+
     // Calculer l'âge de l'enfant
     const now = new Date();
     const birth = new Date(child.birthDate);
@@ -1493,20 +1549,25 @@ const getChildDashboard = async (req, res, next) => {
         },
       },
       vaccinations: {
-        due: child.dueVaccines.map((entry) => ({
-          id: entry.id,
-          vaccineId: entry.vaccineId,
-          vaccineName: entry.vaccine.name,
-          dosesRequired: entry.vaccine.dosesRequired,
-          scheduledFor: entry.scheduledFor,
-          calendarId: entry.vaccineCalendarId,
-          calendarDescription: entry.vaccineCalendar?.description ?? null,
-          ageUnit: entry.vaccineCalendar?.ageUnit ?? null,
-          specificAge: entry.vaccineCalendar?.specificAge ?? null,
-          minAge: entry.vaccineCalendar?.minAge ?? null,
-          maxAge: entry.vaccineCalendar?.maxAge ?? null,
-          dose: entry.dose ?? 1,
-        })),
+        due: Array.from(dueByVaccine.values()).map((entry) => {
+          const dose = entry.dose ?? 1;
+          return {
+            id: entry.id,
+            vaccineId: entry.vaccineId,
+            vaccineName: entry.vaccine.name,
+            dosesRequired: entry.vaccine.dosesRequired,
+            scheduledFor: entry.scheduledFor,
+            calendarId: entry.vaccineCalendarId,
+            calendarDescription: entry.vaccineCalendar?.description ?? null,
+            ageUnit: entry.vaccineCalendar?.ageUnit ?? null,
+            specificAge: entry.vaccineCalendar?.specificAge ?? null,
+            minAge: entry.vaccineCalendar?.minAge ?? null,
+            maxAge: entry.vaccineCalendar?.maxAge ?? null,
+            dose: dose,
+            hasRequested: hasRequested(entry.vaccineId, dose),
+            isScheduled: isScheduled(entry.vaccineId, dose),
+          };
+        }),
         scheduled: child.scheduledVaccines.map((entry) => ({
           id: entry.id,
           vaccineId: entry.vaccineId,
@@ -1521,30 +1582,40 @@ const getChildDashboard = async (req, res, next) => {
           calendarDescription: entry.vaccineCalendar?.description ?? null,
           dose: entry.dose ?? 1,
         })),
-        late: child.lateVaccines.map((entry) => ({
-          id: entry.id,
-          vaccineId: entry.vaccineId,
-          vaccineName: entry.vaccine.name,
-          dosesRequired: entry.vaccine.dosesRequired,
-          dueDate: entry.dueDate,
-          calendarId: entry.vaccineCalendarId,
-          calendarDescription: entry.vaccineCalendar?.description ?? null,
-          ageUnit: entry.vaccineCalendar?.ageUnit ?? null,
-          specificAge: entry.vaccineCalendar?.specificAge ?? null,
-          minAge: entry.vaccineCalendar?.minAge ?? null,
-          maxAge: entry.vaccineCalendar?.maxAge ?? null,
-          dose: entry.dose ?? 1,
-        })),
-        overdue: child.overdueVaccines.map((entry) => ({
-          id: entry.id,
-          vaccineId: entry.vaccineId,
-          vaccineName: entry.vaccine.name,
-          dosesRequired: entry.vaccine.dosesRequired,
-          dueDate: entry.dueDate,
-          calendarId: entry.vaccineCalendarId,
-          calendarDescription: entry.vaccineCalendar?.description ?? null,
-          dose: entry.dose ?? 1,
-        })),
+        late: Array.from(lateByVaccine.values()).map((entry) => {
+          const dose = entry.dose ?? 1;
+          return {
+            id: entry.id,
+            vaccineId: entry.vaccineId,
+            vaccineName: entry.vaccine.name,
+            dosesRequired: entry.vaccine.dosesRequired,
+            dueDate: entry.dueDate,
+            calendarId: entry.vaccineCalendarId,
+            calendarDescription: entry.vaccineCalendar?.description ?? null,
+            ageUnit: entry.vaccineCalendar?.ageUnit ?? null,
+            specificAge: entry.vaccineCalendar?.specificAge ?? null,
+            minAge: entry.vaccineCalendar?.minAge ?? null,
+            maxAge: entry.vaccineCalendar?.maxAge ?? null,
+            dose: dose,
+            hasRequested: hasRequested(entry.vaccineId, dose),
+            isScheduled: isScheduled(entry.vaccineId, dose),
+          };
+        }),
+        overdue: child.overdueVaccines.map((entry) => {
+          const dose = entry.dose ?? 1;
+          return {
+            id: entry.id,
+            vaccineId: entry.vaccineId,
+            vaccineName: entry.vaccine.name,
+            dosesRequired: entry.vaccine.dosesRequired,
+            dueDate: entry.dueDate,
+            calendarId: entry.vaccineCalendarId,
+            calendarDescription: entry.vaccineCalendar?.description ?? null,
+            dose: dose,
+            hasRequested: hasRequested(entry.vaccineId, dose),
+            isScheduled: isScheduled(entry.vaccineId, dose),
+          };
+        }),
         completed: child.completedVaccines.map((entry) => ({
           id: entry.id,
           vaccineId: entry.vaccineId,
@@ -1561,9 +1632,9 @@ const getChildDashboard = async (req, res, next) => {
         })),
       },
       stats: {
-        totalDue: child.dueVaccines.length,
+        totalDue: Array.from(dueByVaccine.values()).length,
         totalScheduled: child.scheduledVaccines.length,
-        totalLate: child.lateVaccines.length,
+        totalLate: Array.from(lateByVaccine.values()).length,
         totalOverdue: child.overdueVaccines.length,
         totalCompleted: child.completedVaccines.length,
       },
@@ -1707,11 +1778,18 @@ const getAdvice = async (req, res, next) => {
 /**
  * GET /api/mobile/campaigns
  * Obtenir les campagnes de vaccination (pour les parents mobiles)
+ * Ne retourne que les campagnes non terminées (endDate >= aujourd'hui)
  */
 const getCampaigns = async (req, res, next) => {
   try {
-    // Les parents mobiles peuvent voir toutes les campagnes actives
+    const now = new Date();
+    // Les parents mobiles peuvent voir uniquement les campagnes non terminées
     const campaigns = await prisma.campaign.findMany({
+      where: {
+        endDate: {
+          gte: now, // Seulement les campagnes dont la date de fin est >= aujourd'hui
+        },
+      },
       include: {
         region: {
           select: {
