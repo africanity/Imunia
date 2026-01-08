@@ -83,6 +83,13 @@ router.post("/parent-pin/save", mobileController.saveParentPin);
 router.post("/parent-pin/verify", mobileController.verifyParentPin);
 router.post("/parent-pin/request-change-code", requireMobileAuth, mobileController.requestChangePinCode);
 router.post("/parent-pin/change", requireMobileAuth, mobileController.changeParentPin);
+router.post("/parent-pin/forgot-pin-request", mobileController.requestForgotPinCode);
+router.post("/parent-pin/verify-forgot-pin-code", mobileController.verifyForgotPinCode);
+router.post("/parent-pin/reset-pin", mobileController.resetForgotPin);
+
+// Gestion du numéro de téléphone
+router.post("/parent-phone/request-change-code", requireMobileAuth, mobileController.requestChangePhoneCode);
+router.post("/parent-phone/change", requireMobileAuth, mobileController.changeParentPhone);
 
 // Marquer les vaccins comme effectués
 router.post("/children/:childId/mark-vaccines-done", mobileController.markVaccinesDone);

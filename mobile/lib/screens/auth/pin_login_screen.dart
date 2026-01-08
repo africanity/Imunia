@@ -9,6 +9,7 @@ import '../child/child_dashboard_screen.dart';
 import '../../core/config/api_config.dart';
 import '../../services/settings_service.dart';
 import '../../models/system_settings.dart';
+import 'forgot_pin_screen.dart';
 
 class PinLoginScreen extends StatefulWidget {
   const PinLoginScreen({super.key});
@@ -410,6 +411,30 @@ class _PinLoginScreenState extends State<PinLoginScreen>
                     const CircularProgressIndicator(
                       valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF3B760F)),
                     ),
+                  
+                  const SizedBox(height: 20),
+                  
+                  // Bouton "Code PIN oublié"
+                  TextButton(
+                    onPressed: isLoading
+                        ? null
+                        : () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const ForgotPinScreen(),
+                              ),
+                            );
+                          },
+                    child: Text(
+                      'Code PIN oublié ?',
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF3B760F),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
