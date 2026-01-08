@@ -137,6 +137,48 @@ _${appName} - Protéger la santé de nos enfants_`;
   return sendWhatsApp(to, message);
 };
 
+const sendPhoneChangeVerificationCodeWhatsApp = async (to, parentName, verificationCode) => {
+  const appName = await getAppName();
+  const message = `📱 *Changement de numéro de téléphone - ${appName}*
+
+Bonjour ${parentName},
+
+Vous avez demandé à changer votre numéro de téléphone dans l'application ${appName}.
+
+Votre code de vérification est : *${verificationCode}*
+
+Ce code expire dans 10 minutes.
+
+Utilisez ce code dans l'application pour confirmer le changement de votre numéro de téléphone.
+
+💬 Besoin d'aide ? Répondez à ce message.
+_${appName} - Protéger la santé de nos enfants_`;
+
+  return sendWhatsApp(to, message);
+};
+
+const sendPinResetVerificationCodeWhatsApp = async (to, parentName, verificationCode) => {
+  const appName = await getAppName();
+  const message = `🔐 *Réinitialisation du code PIN - ${appName}*
+
+Bonjour ${parentName},
+
+Vous avez demandé à réinitialiser votre code PIN dans l'application ${appName}.
+
+Votre code de vérification est : *${verificationCode}*
+
+Ce code expire dans 10 minutes.
+
+Utilisez ce code dans l'application pour créer un nouveau code PIN et retrouver l'accès à votre compte.
+
+⚠️ Si vous n'avez pas fait cette demande, ignorez ce message.
+
+💬 Besoin d'aide ? Répondez à ce message.
+_${appName} - Protéger la santé de nos enfants_`;
+
+  return sendWhatsApp(to, message);
+};
+
 const sendVaccinationReminder = async (
   to,
   parentName,
@@ -192,6 +234,8 @@ module.exports = {
   sendWhatsApp,
   sendAccessCodeWhatsApp,
   sendVerificationCodeWhatsApp,
+  sendPhoneChangeVerificationCodeWhatsApp,
+  sendPinResetVerificationCodeWhatsApp,
   sendVaccinationReminder,
   sendPhotoRequestWhatsApp,
   sendAccountActivationWhatsApp,

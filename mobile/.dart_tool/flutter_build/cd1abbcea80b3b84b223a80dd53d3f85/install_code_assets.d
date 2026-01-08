@@ -1,0 +1,1 @@
+ C:\\Users\\daibr\\Documents\\GitHub\\vax\\mobile\\.dart_tool\\flutter_build\\cd1abbcea80b3b84b223a80dd53d3f85\\native_assets.json: 
