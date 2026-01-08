@@ -1,0 +1,18 @@
+[
+    {
+        "merged": "io.inway.ringtone.player.flutter_ringtone_player-release-25:/layout-v21/notification_template_icon_group.xml",
+        "source": "io.inway.ringtone.player.flutter_ringtone_player-core-1.13.1-8:/layout-v21/notification_template_icon_group.xml"
+    },
+    {
+        "merged": "io.inway.ringtone.player.flutter_ringtone_player-release-25:/layout-v21/notification_template_custom_big.xml",
+        "source": "io.inway.ringtone.player.flutter_ringtone_player-core-1.13.1-8:/layout-v21/notification_template_custom_big.xml"
+    },
+    {
+        "merged": "io.inway.ringtone.player.flutter_ringtone_player-release-25:/layout-v21/notification_action.xml",
+        "source": "io.inway.ringtone.player.flutter_ringtone_player-core-1.13.1-8:/layout-v21/notification_action.xml"
+    },
+    {
+        "merged": "io.inway.ringtone.player.flutter_ringtone_player-release-25:/layout-v21/notification_action_tombstone.xml",
+        "source": "io.inway.ringtone.player.flutter_ringtone_player-core-1.13.1-8:/layout-v21/notification_action_tombstone.xml"
+    }
+]

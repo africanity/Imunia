@@ -1,0 +1,26 @@
+[
+    {
+        "merged": "io.inway.ringtone.player.flutter_ringtone_player-release-25:/drawable-ldpi-v4/ic_call_answer.png",
+        "source": "io.inway.ringtone.player.flutter_ringtone_player-core-1.13.1-8:/drawable-ldpi-v4/ic_call_answer.png"
+    },
+    {
+        "merged": "io.inway.ringtone.player.flutter_ringtone_player-release-25:/drawable-ldpi-v4/ic_call_answer_video_low.png",
+        "source": "io.inway.ringtone.player.flutter_ringtone_player-core-1.13.1-8:/drawable-ldpi-v4/ic_call_answer_video_low.png"
+    },
+    {
+        "merged": "io.inway.ringtone.player.flutter_ringtone_player-release-25:/drawable-ldpi-v4/ic_call_decline.png",
+        "source": "io.inway.ringtone.player.flutter_ringtone_player-core-1.13.1-8:/drawable-ldpi-v4/ic_call_decline.png"
+    },
+    {
+        "merged": "io.inway.ringtone.player.flutter_ringtone_player-release-25:/drawable-ldpi-v4/ic_call_answer_low.png",
+        "source": "io.inway.ringtone.player.flutter_ringtone_player-core-1.13.1-8:/drawable-ldpi-v4/ic_call_answer_low.png"
+    },
+    {
+        "merged": "io.inway.ringtone.player.flutter_ringtone_player-release-25:/drawable-ldpi-v4/ic_call_answer_video.png",
+        "source": "io.inway.ringtone.player.flutter_ringtone_player-core-1.13.1-8:/drawable-ldpi-v4/ic_call_answer_video.png"
+    },
+    {
+        "merged": "io.inway.ringtone.player.flutter_ringtone_player-release-25:/drawable-ldpi-v4/ic_call_decline_low.png",
+        "source": "io.inway.ringtone.player.flutter_ringtone_player-core-1.13.1-8:/drawable-ldpi-v4/ic_call_decline_low.png"
+    }
+]

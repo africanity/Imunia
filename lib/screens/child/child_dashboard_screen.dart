@@ -336,41 +336,49 @@ class _ChildDashboardScreenState extends State<ChildDashboardScreen> {
     final stats = _dashboardData!["stats"] as Map<String, dynamic>;
     final parentName = child["parentName"] ?? "";
 
-    return CustomScrollView(
-      slivers: [
+    return RefreshIndicator(
+      onRefresh: _loadDashboardData,
+      color: AppColors.primary,
+      child: CustomScrollView(
+        clipBehavior: Clip.none,
+        slivers: [
         // Header avec "Bonjour" et nom du parent
         SliverAppBar(
           expandedHeight: 100,
+          collapsedHeight: 60,
           floating: false,
           pinned: true,
+          snap: false,
           backgroundColor: const Color(0xFF0A1A33),
+          elevation: 0,
           flexibleSpace: FlexibleSpaceBar(
-            background: Stack(
-              fit: StackFit.expand,
-              children: [
-                  // Image en arrière-plan
-                  Image.asset(
-                    'assets/images/onboarding1.png',
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return Container(
-                        color: const Color(0xFF0A1A33),
-                      );
-                    },
-                  ),
-                  // Overlay bleu transparent
-                  Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          const Color(0xFF0A1A33).withOpacity(0.85),
-                          const Color(0xFF1A2F4F).withOpacity(0.80),
-                        ],
+              collapseMode: CollapseMode.pin,
+              background: Stack(
+                fit: StackFit.expand,
+                children: [
+                    // Image en arrière-plan
+                    Image.asset(
+                      'assets/images/onboarding1.png',
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          color: const Color(0xFF0A1A33),
+                        );
+                      },
+                    ),
+                    // Overlay bleu transparent
+                    Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            const Color(0xFF0A1A33).withOpacity(0.85),
+                            const Color(0xFF1A2F4F).withOpacity(0.80),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
                   // Contenu du header
                   SafeArea(
                     child: Padding(
@@ -639,73 +647,103 @@ class _ChildDashboardScreenState extends State<ChildDashboardScreen> {
           ),
         // Contenu principal - 4 blocs de statistiques
         SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.all(AppSpacing.md),
-            child: Column(
-              children: [
-                // Première ligne : Vaccins faits et Vaccins ratés
-                Row(
-                  children: [
-                    Expanded(
-                      child: StatCard(
-                        label: 'Vaccins faits',
-                        value: stats["totalCompleted"].toString(),
-                        icon: Icons.check_circle_outline,
-                        color: AppColors.success,
-                        subtitle: 'Sur ${(stats["totalDue"] ?? 0) + (stats["totalCompleted"] ?? 0) + (stats["totalLate"] ?? 0) + (stats["totalOverdue"] ?? 0)}',
-                        onTap: () => _navigateToVaccines('completed'),
-                      ),
+          child: Transform.translate(
+            offset: const Offset(0, -AppRadius.lg),
+            child: Container(
+              decoration: BoxDecoration(
+                color: AppColors.background,
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(AppRadius.lg),
+                  topRight: Radius.circular(AppRadius.lg),
+                ),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md + AppRadius.lg, AppSpacing.md, AppSpacing.sm),
+                child: Column(
+                children: [
+                  // Première ligne : Vaccins faits et Vaccins ratés
+                Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 380),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Flexible(
+                          flex: 1,
+                          child: StatCard(
+                            label: 'Vaccins faits',
+                            value: stats["totalCompleted"].toString(),
+                            icon: Icons.check_circle_outline,
+                            color: AppColors.success,
+                            subtitle: 'Sur ${(stats["totalDue"] ?? 0) + (stats["totalCompleted"] ?? 0) + (stats["totalLate"] ?? 0) + (stats["totalOverdue"] ?? 0)}',
+                            onTap: () => _navigateToVaccines('completed'),
+                          ),
+                        ),
+                        const SizedBox(width: AppSpacing.md),
+                        Flexible(
+                          flex: 1,
+                          child: StatCard(
+                            label: 'Vaccins ratés',
+                            value: (stats["totalOverdue"] ?? 0).toString(),
+                            icon: Icons.warning_amber_rounded,
+                            color: AppColors.warning,
+                            subtitle: 'À rattraper',
+                            onTap: () => _navigateToVaccines('missed'),
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: AppSpacing.sm),
-                    Expanded(
-                      child: StatCard(
-                        label: 'Vaccins ratés',
-                        value: (stats["totalOverdue"] ?? 0).toString(),
-                        icon: Icons.warning_amber_rounded,
-                        color: AppColors.warning,
-                        subtitle: 'À rattraper',
-                        onTap: () => _navigateToVaccines('missed'),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
                 const SizedBox(height: AppSpacing.sm),
                 // Deuxième ligne : Restants et Vaccins en retard
-                Row(
-                  children: [
-                    Expanded(
-                      child: StatCard(
-                        label: 'Restants',
-                        value: stats["totalDue"].toString(),
-                        icon: Icons.pending_outlined,
-                        color: AppColors.info,
-                        subtitle: 'À faire',
-                        onTap: () => _navigateToVaccines('due'),
-                      ),
+                Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 380),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Flexible(
+                          flex: 1,
+                          child: StatCard(
+                            label: 'Restants',
+                            value: stats["totalDue"].toString(),
+                            icon: Icons.pending_outlined,
+                            color: AppColors.info,
+                            subtitle: 'À faire',
+                            onTap: () => _navigateToVaccines('due'),
+                          ),
+                        ),
+                        const SizedBox(width: AppSpacing.md),
+                        Flexible(
+                          flex: 1,
+                          child: StatCard(
+                            label: 'Vaccins en retard',
+                            value: stats["totalLate"].toString(),
+                            icon: Icons.error_outline_rounded,
+                            color: AppColors.error,
+                            subtitle: 'En retard',
+                            onTap: () => _navigateToVaccines('late'),
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: AppSpacing.sm),
-                    Expanded(
-                      child: StatCard(
-                        label: 'Vaccins en retard',
-                        value: stats["totalLate"].toString(),
-                        icon: Icons.error_outline_rounded,
-                        color: AppColors.error,
-                        subtitle: 'En retard',
-                        onTap: () => _navigateToVaccines('late'),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              ],
+                ],
+                ),
+              ),
             ),
           ),
         ),
         // Grille de fonctionnalités
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.all(AppSpacing.md),
+            padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.sm, AppSpacing.md, AppSpacing.md),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
                   'Fonctionnalités',
@@ -715,13 +753,14 @@ class _ChildDashboardScreenState extends State<ChildDashboardScreen> {
                     color: const Color(0xFF0A1A33),
                   ),
                 ),
-                const SizedBox(height: AppSpacing.md),
+                const SizedBox(height: AppSpacing.sm),
                 _buildFeaturesGrid(),
               ],
             ),
           ),
         ),
       ],
+      ),
     );
   }
 
@@ -826,6 +865,7 @@ class _ChildDashboardScreenState extends State<ChildDashboardScreen> {
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.zero,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
         crossAxisSpacing: AppSpacing.md,
@@ -856,6 +896,7 @@ class _ChildDashboardScreenState extends State<ChildDashboardScreen> {
     return GestureDetector(
       onTap: onTap,
       child: Container(
+        width: double.infinity,
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(AppRadius.lg),
@@ -874,8 +915,8 @@ class _ChildDashboardScreenState extends State<ChildDashboardScreen> {
                 padding: const EdgeInsets.all(AppSpacing.sm),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.center,
                   mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     Container(
                       width: 52,
@@ -1075,7 +1116,7 @@ class _ChildDashboardScreenState extends State<ChildDashboardScreen> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border.all(
           color: isToday ? const Color(0xFF3B760F) : Colors.grey.shade200,
           width: isToday ? 2 : 1,

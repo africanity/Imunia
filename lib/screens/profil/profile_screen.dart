@@ -12,6 +12,7 @@ import '../../models/system_settings.dart';
 import '../onboarding/onboarding_screen.dart';
 import 'children_selector_screen.dart';
 import 'change_pin_screen.dart';
+import 'change_phone_screen.dart';
 import 'help_faq_screen.dart';
 import 'contact_support_screen.dart';
 
@@ -150,6 +151,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
       context,
       MaterialPageRoute(
         builder: (_) => const ChangePinScreen(),
+      ),
+    );
+  }
+  
+  void _showChangePhoneDialog() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const ChangePhoneScreen(),
       ),
     );
   }
@@ -438,6 +448,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
               icon: Icons.lock_outline_rounded,
               color: AppColors.primary,
               onTap: _showChangePinDialog,
+            ),
+            
+            InfoCard(
+              title: 'Changer de numéro',
+              subtitle: 'Modifier votre numéro de téléphone',
+              icon: Icons.phone_outlined,
+              color: AppColors.info,
+              onTap: _showChangePhoneDialog,
             ),
             
             const SizedBox(height: AppSpacing.lg),

@@ -392,11 +392,22 @@ class _ChangePinScreenState extends State<ChangePinScreen> {
         ),
       ),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.lg),
-          child: Column(
-            children: [
-              const SizedBox(height: AppSpacing.xl),
+        child: Transform.translate(
+          offset: const Offset(0, -AppRadius.lg),
+          child: Container(
+            decoration: BoxDecoration(
+              color: AppColors.background,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(AppRadius.lg),
+                topRight: Radius.circular(AppRadius.lg),
+              ),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.lg + AppRadius.lg, AppSpacing.lg, AppSpacing.lg),
+              child: Column(
+                children: [
+                  const SizedBox(height: AppSpacing.md),
               
               // Progress indicator
               Row(
@@ -498,7 +509,7 @@ class _ChangePinScreenState extends State<ChangePinScreen> {
                   ),
                 ),
               
-              const Spacer(),
+              const SizedBox(height: AppSpacing.xl),
               
               // Loading indicator
               if (_isLoading)
@@ -536,7 +547,9 @@ class _ChangePinScreenState extends State<ChangePinScreen> {
                   ],
                 ),
               ),
-            ],
+                ],
+              ),
+            ),
           ),
         ),
       ),

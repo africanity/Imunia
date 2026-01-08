@@ -1,0 +1,2 @@
+C:/Users/daibr/vax/mobile/android/app/.cxx/Debug/3k3i4jx1/x86/CMakeFiles/edit_cache.dir
+C:/Users/daibr/vax/mobile/android/app/.cxx/Debug/3k3i4jx1/x86/CMakeFiles/rebuild_cache.dir

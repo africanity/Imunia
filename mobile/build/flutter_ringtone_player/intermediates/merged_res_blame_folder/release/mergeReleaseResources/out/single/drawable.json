@@ -1,0 +1,18 @@
+[
+    {
+        "merged": "io.inway.ringtone.player.flutter_ringtone_player-release-25:/drawable/notification_tile_bg.xml",
+        "source": "io.inway.ringtone.player.flutter_ringtone_player-core-1.13.1-8:/drawable/notification_tile_bg.xml"
+    },
+    {
+        "merged": "io.inway.ringtone.player.flutter_ringtone_player-release-25:/drawable/notification_bg.xml",
+        "source": "io.inway.ringtone.player.flutter_ringtone_player-core-1.13.1-8:/drawable/notification_bg.xml"
+    },
+    {
+        "merged": "io.inway.ringtone.player.flutter_ringtone_player-release-25:/drawable/notification_bg_low.xml",
+        "source": "io.inway.ringtone.player.flutter_ringtone_player-core-1.13.1-8:/drawable/notification_bg_low.xml"
+    },
+    {
+        "merged": "io.inway.ringtone.player.flutter_ringtone_player-release-25:/drawable/notification_icon_background.xml",
+        "source": "io.inway.ringtone.player.flutter_ringtone_player-core-1.13.1-8:/drawable/notification_icon_background.xml"
+    }
+]

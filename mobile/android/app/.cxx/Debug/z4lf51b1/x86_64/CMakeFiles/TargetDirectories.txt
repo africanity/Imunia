@@ -1,0 +1,2 @@
+C:/Users/daibr/Documents/GitHub/vax/mobile/android/app/.cxx/Debug/z4lf51b1/x86_64/CMakeFiles/edit_cache.dir
+C:/Users/daibr/Documents/GitHub/vax/mobile/android/app/.cxx/Debug/z4lf51b1/x86_64/CMakeFiles/rebuild_cache.dir
