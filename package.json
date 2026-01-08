@@ -1,43 +1,31 @@
 {
-  "name": "vax",
-  "version": "1.0.0",
-  "description": "",
-  "main": "src/server.js",
+  "name": "frontend",
+  "version": "0.1.0",
+  "private": true,
   "scripts": {
-    "dev": "nodemon src/server.js",
-    "start": "node src/server.js",
-    "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev",
-    "test": "jest",
-    "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage",
-    "test:integration": "jest --config=jest.integration.config.js"
+    "dev": "next dev -p 3001",
+    "build": "next build",
+    "start": "next start -p 3001",
+    "lint": "eslint"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "dependencies": {
-    "@prisma/adapter-pg": "^7.0.0",
-    "@prisma/client": "^7.0.0",
-    "bcryptjs": "^3.0.3",
-    "cors": "^2.8.5",
-    "dotenv": "^17.2.3",
-    "express": "^5.1.0",
-    "jsonwebtoken": "^9.0.2",
-    "multer": "^2.0.2",
-    "node-cron": "^3.0.3",
-    "nodemailer": "^7.0.10",
-    "pdfkit": "^0.17.2",
-    "pg": "^8.16.3",
-    "socket.io": "^4.8.1",
-    "twilio": "^5.10.6"
+    "js-cookie": "^3.0.5",
+    "jwt-decode": "^4.0.0",
+    "lucide-react": "^0.554.0",
+    "next": "16.0.3",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "recharts": "^3.5.0"
   },
   "devDependencies": {
-    "@jest/globals": "^30.2.0",
-    "dotenv-cli": "^11.0.0",
-    "jest": "^30.2.0",
-    "nodemon": "^3.1.11",
-    "prisma": "^7.0.0",
-    "supertest": "^7.1.4"
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "baseline-browser-mapping": "^2.8.32",
+    "eslint": "^9",
+    "eslint-config-next": "16.0.3",
+    "tailwindcss": "^4",
+    "typescript": "^5"
   }
 }
